@@ -1,0 +1,47 @@
+name: Slicer host bridge
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'integrations/**'
+      - 'tests/test_plugin_packaging.py'
+      - 'tests/slicer_host_render_smoke.py'
+      - 'tests/slicer_multivolume_smoke.py'
+      - 'tests/test_host_view_math.py'
+      - 'tests/test_host_panels.py'
+      - 'tests/slicer_panels_smoke.py'
+      - 'scripts/package_plugins.py'
+      - '.github/workflows/slicer.yml'
+permissions:
+  contents: read
+jobs:
+  slicer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Slicer Linux prerequisites
+        run: sudo apt-get update && sudo apt-get install -y xvfb libglu1-mesa libpulse-mainloop-glib0 libnss3 libasound2t64 qt5dxcb-plugin libsm6
+      - uses: actions/cache@v4
+        with:
+          path: .cache/Slicer-5.12.4-linux-amd64.tar.gz
+          key: slicer-linux-5.12.4-34645
+      - name: Download and verify official Slicer 5.12.4 package
+        run: |
+          mkdir -p .cache build-slicer
+          if [ ! -f .cache/Slicer-5.12.4-linux-amd64.tar.gz ]; then
+            curl --fail --location --retry 3 https://download.slicer.org/bitstream/6aa1beb7ce9de556d3010204 -o .cache/Slicer-5.12.4-linux-amd64.tar.gz
+          fi
+          echo 'ac76c5061a8fff20d4e59732855f74360930fd4891450085bcbc6a8eb1a1f4ade9a1ca4fc633142661b714dbe8c4604306079f9546e52053faa5e6f99410cf76  .cache/Slicer-5.12.4-linux-amd64.tar.gz' | sha512sum --check
+          tar -xzf .cache/Slicer-5.12.4-linux-amd64.tar.gz --strip-components=1 -C build-slicer
+      - name: Package the direct streaming module and check legacy removal
+        run: |
+          python3 scripts/package_plugins.py
+          python3 tests/test_plugin_packaging.py
+      - name: Render stereo and cropped CT using the live host renderer
+        run: xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 build-slicer/Slicer --no-splash --ignore-slicerrc --additional-module-paths "$PWD/package/QAROS-VTK-plugins/slicer" --python-script tests/slicer_host_render_smoke.py
+      - name: Preview live slice and video frames without additional renders
+        run: xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 build-slicer/Slicer --no-splash --ignore-slicerrc --additional-module-paths "$PWD/package/QAROS-VTK-plugins/slicer" --python-script tests/slicer_panels_smoke.py
+      - name: Verify two live volumes against native color and independent VTK tissue depths
+        run: xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 build-slicer/Slicer --no-splash --ignore-slicerrc --additional-module-paths "$PWD/package/QAROS-VTK-plugins/slicer" --python-script tests/slicer_multivolume_smoke.py
+

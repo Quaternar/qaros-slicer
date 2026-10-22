@@ -1,0 +1,172 @@
+QAROS Live Renderer — r8.4 pro instalované QAROS dev.3008
+
+AKTUALIZACE
+
+1. Zastav přenos a zavři Slicer.
+2. GitHub Desktop → QAROS_VTK / main → Fetch origin → Pull origin.
+3. Spusť D:\QAROS_VTK\UPDATE-LIVE-PLUGIN.cmd. Ověří SDK a nainstaluje r8.4 včetně DLL; funguje i při první instalaci.
+4. Otevři instalované QAROS a Slicer.
+5. Zvol QAROS → QAROS Live Renderer.
+
+Je to jediný QAROS modul ve Sliceru. Starý QAROS Streaming a jeho exportní
+helpery aktualizátor zazálohuje a odstraní ze spravovaných složek.
+Při první instalaci přidej níže uvedenou složku v Edit > Application Settings >
+Modules > Additional module paths a restartuj Slicer.
+Additional module paths zůstává D:/QAROS_VTK/package/windows-start/plugins/slicer.
+
+PRVNÍ TEST
+
+1. Ve Sliceru otevři CT scénu.
+2. Ve Volume Rendering zapni její zobrazení a použij VTK GPU / Composite.
+3. Nastav vzhled v prvním 3D pohledu Sliceru. Výchozí volba Separate QAROS workspace
+   vytvoří samostatný prostor pro každý viditelný objem. Vypni ji pro celou scénu.
+4. Otevři QAROS Live Renderer a zkontroluj:
+   Host bridge DLL: D:/QAROS_VTK/package/windows-start/Release/qarvtk-host.dll
+   QAROS SDK folder: C:/Program Files/Quaternar/QAROS (nebo tvoje skutečná instalace)
+   Stream to: Visualizer only pro první test s jedním běžícím receiverem; Headset only pro brýle
+   Center model in workspace at Start: zapnuto
+   Model size (at Start): 1x (1:1); posuvník 1/8x až 8x, tlačítko 1:1 vrátí skutečnou velikost
+   Use Slicer viewing direction at Start: zapnuto
+   Show slice views as panels (preview only): zapnuto
+   Slice preview FPS limit: 15; pro rychlejší video můžeš zvolit 30
+   Render resolution: 100 % pro původní kvalitu; 50 % pro porovnání rychlosti
+5. Klikni Start live streaming a nech Visualizer viditelný.
+6. Po prvním snímku změň preset / barvu / viditelnost ve Sliceru.
+   Změna se má projevit sama, bez Update scene.
+7. Zapni Crop a posuň ROI. Také ořez se má měnit živě ve Visualizeru.
+8. Stop live streaming ukončí přenos; počkej, až se znovu povolí Start.
+
+Maximalizace stejného 3D pohledu a návrat zachovávají přenos. Odebrání zdrojového
+pohledu, změna OpenGL kontextu nebo zavření scény přenos zastaví.
+Natočení, vystředění a měřítko se při Start nastaví přes SDK app_pose/app_scale.
+Výchozí směr odpovídá pohledu ve Sliceru. Další pohyb kamer je nezávislý;
+otáčení desktopové kamery po Start nepřesouvá scénu ve Visualizeru.
+Pro nové výchozí natočení, rozsah scény nebo jiné renderovací rozlišení dej Stop a Start.
+
+ŽIVÉ NÁHLEDY ŘEZŮ A VIDEA
+
+Zvol ve Sliceru rozložení Four-up, aby byly vidět 3D pohled a červený, žlutý
+a zelený řez. Po Start se jejich živé obrazy zobrazí jako samostatné panely
+pod pracovním objemem. Každý nový panel má úhlopříčku 14 palců, nezávisle na
+měřítku modelu; uživatel jej může v QAROS změnit. Náhledy mají nejvýše 768 pixelů na delší straně,
+zachovávají poměr stran a při změně tvaru okna doplní černé okraje.
+Změny dat, polohy řezu, anotací, video a přehrávání časové sekvence se přenášejí
+podle vykreslování Sliceru. Panel neřídí přehrávání ani nepřijímá interakce.
+Qt lišty a posuvníky nejsou součástí tohoto náhledu; ovládají se ve Sliceru.
+
+Limit 5/10/15/30 FPS je maximum na panel, nikoli zaručená rychlost. Při pomalém
+přenosu se starší čekající snímky nahradí nejnovějším. Náhled nespouští další
+Render ani čtení obrazu do RAM. Zachycení je GPU kopie; enkódování a přenos
+mají vlastní vlákno. Statický obraz se po síti obnoví jednou za dvě sekundy
+kvůli znovupřipojení, bez nové kopie ze Sliceru.
+
+Skrytí řezu v rozložení skryje i jeho panel; návrat jej opět aktualizuje.
+Při maximalizaci samotného 3D pohledu tedy náhledy řezů zmizí. Chyba jednoho
+panelu se zobrazí v modulu a logu, stereo stream pokračuje. Stop zavře panely
+i jejich streamy. Pro porovnání výkonu dej Stop, vypni Show slice views as
+panels a znovu Start. Změna limitu FPS se také uplatní při Start.
+Náhledy přidávají GPU kopie a video enkodéry; nulový dopad na FPS neslibujeme.
+COLLECT-LOGS.cmd zahrnuje i záznamy PANEL_SOURCE, PANEL_ERROR a PERF_PANELS.
+
+PRACOVNÍ PROSTOR VE VISUALIZERU
+
+R16 při Start nastaví jeho šířku, výšku a hloubku podle bounds viditelných
+objektů v prvním 3D pohledu Sliceru. Započítá natočení i SDK app_scale.
+Pevná kostka 1,2 m je nahrazena kvádrem odpovídajícím scéně.
+Center model zapnuto: střed dat je uprostřed pracovního prostoru bez změny velikosti.
+V r8 je výchozí měřítko 1:1: 1 mm dat zůstane 1 mm v prostoru. Model size mění
+všechny objemy stejným násobkem od 1/8x do 8x; střed posuvníku je 1:1.
+Center model vypnuto zachová i polohu dat; pracovní kvádr se umístí kolem nich.
+Řádek Workspace ukazuje šířku × výšku × hloubku
+v centimetrech. Plochá scéna má minimální tloušťku 1 mm.
+Rozměry se zafixují při Start. Změny ROI/presetu se stále vykreslují živě,
+ale ořez ROI automaticky nezmenšuje bounds ani pracovní prostor.
+
+Pod volbou rozlišení jsou skutečné velikosti: Render, stream color, depth, Slicer.
+Při požadavku 1920 × 1080 pro oko zůstává přenášená barva v tomto rozlišení,
+depth má 960 × 540. Render 75 % znamená 1440 × 810, 50 % znamená 960 × 540.
+50 % vykresluje čtvrtinu pixelů; barva se na GPU zvětší do streamu. Hloubka
+se vzorkuje bez míchání vzdáleností na hranách. Přenosové rozlišení barvy se nemění.
+Samotná poloviční depth u společného průchodu nesnižuje počet paprsků barvy.
+
+MĚŘENÍ POKLESU FPS V R14
+
+R14 přidává diagnostiku; zatím nejde o opravu poklesu FPS. Orientace v r13
+je potvrzená. Rozlišení při předchozím testu zůstalo 960 × 540 pro každé oko,
+ale čas renderu postupně narostl z asi 30 na 48 ms a FPS kleslo z 19 na 13.
+
+Pro srovnání nech Render resolution na 50 %. Obě okna měj pokud možno viditelná.
+Nech 20–30 sekund aktivní Visualizer, pak 20–30 sekund Slicer, a zopakuj to.
+Během tohoto měření neměň natočení, zoom ani preset. Po 2–3 minutách dej Stop,
+počkej na povolení Start a spusť COLLECT-LOGS.cmd. Snímání obrazovky není potřeba.
+Aktivní okno, jednotlivé snímky a GPU se zaznamenávají automaticky.
+
+CO TATO VERZE DĚLÁ
+
+Používá přímo renderer, objekty, shadery a volume mapper běžící ve Sliceru.
+Scéna se neexportuje do VTP/VTM. Obraz se nečte do RAM. Knihovna qarvtk-host.dll
+neobsahuje další VTK/Qt a používá vlastní sdílené OpenGL kontexty pro kopírování
+a SDK. Původní renderer na monitoru se po každém stereo snímku obnoví.
+
+U standardního CT/MR vykreslování ve Sliceru 5.12.4 se barva a hloubka získávají
+společně, jedním vykreslením pro každé oko. Původní desktopové textury se
+uchovají na GPU a vrátí bez dalšího renderu. Dočasné změny kamery nespouštějí
+automatické překreslení Sliceru. Použitá nativní DLL má host ABI 5.
+Instalaci prováděj se zavřeným Slicerem. Synchronizace a vlastnictví snímku zůstávají.
+SDK pózy se použijí přímo v původních RAS souřadnicích Sliceru. Převod milimetrů
+na metry, přizpůsobení velikosti i otočení zajišťují app_scale a app_pose.
+
+U neověřených vlastních renderovacích průchodů, SSAO, volume depth peelingu
+nebo konfliktního shaderu zůstává původní doplňkový průchod pro hloubku.
+Dvě vykreslení očí stále mají náklady na hlavním vlákně a GPU. Zlepšení FPS na
+tvém PC je potřeba změřit, tato verze neslibuje 60 FPS ani nulový vliv streamu.
+
+Podporované jsou VTK GPU Composite objemy, jednotlivě ve vlastních pracovních
+prostorech nebo ve společné scéně podle volby Separate QAROS workspace.
+ROI ořez je podporovaný. VTK Multi-Volume fusion, MIP a průhledné povrchy
+v kombinaci s objemem nemají ověřenou hloubku a modul je odmítne. Jedna hloubka na
+pixel je aproximace objemu: první přispívající vzorek, ne všechny vrstvy.
+Náhledy řezů jsou podporované; ovládání zpět do Sliceru není součástí.
+ParaView zůstává u dosavadního povrchového exportu.
+
+R15 pokračuje při maximalizaci stejného 3D pohledu a návratu do původního
+rozložení. Odebrání zdrojového pohledu nebo změna OpenGL kontextu vyžaduje
+nový Start. Důvod ukončení se zobrazí v modulu a v logu STOP_REQUEST.
+Při zachování pohledu se zaznamená LAYOUT_CHANGED. Jde o opravu ukončování
+při změně rozložení, nikoli o potvrzenou opravu FPS.
+
+PŘI CHYBĚ
+
+Zkopíruj text ze stavového řádku nového modulu. Log folder obsahuje jeho logy.
+D:\QAROS_VTK\COLLECT-LOGS.cmd přidá host-bridge.log, host-python.log a host-system.log do ZIPu.
+Při aktualizaci musí být Slicer zavřený, jinak Windows drží DLL zamčenou.
+SDK hlavičku ani knihovny v instalovaném QAROS neměň.
+
+R11 opravuje opakované převzetí už dokončeného snímku (Duplicate host frame plane).
+Pád Visualizeru s touto chybou zatím není prokázaný. Pro měření výkonu nech
+přenos běžet 30 sekund s viditelným Visualizerem, pak dej Stop, počkej na jeho
+dokončení a spusť COLLECT-LOGS.cmd. Snímání obrazovky není potřeba.
+R14 zapisuje Python souhrny po sekundě, včetně časové řady jednotlivých snímků,
+aktivního procesu, CPU času renderovacího vlákna a změn SDK kamery. GPU teplota,
+takty, vytížení, paměť a důvody omezení taktů se čtou přes NVML jednou za sekundu
+na samostatném vlákně. Nepodporované údaje se označí jako nedostupné; přenos běží dál.
+Nativní SDK/kopírovací časování zůstává v pětisekundových souhrnech.
+Podrobnosti a význam sloupců jsou v docs/FPS_DIAGNOSTICS.md v repozitáři.
+R12 přidává počty host_render_calls, volume_depth_passes a
+desktop_restore_render_calls. Standardní stereo snímek má hodnoty 2, 0, 0.
+R13 navíc rozlišuje eye_sizes (barva streamu), depth_sizes, render_sizes a
+desktop_size. Záznam PLACEMENT obsahuje výchozí app_pose/app_scale.
+Jsou to časy volání na CPU včetně čekání, nikoli izolované časy GPU kernelů.
+Nativní kopírování/synchronizace jsou již obsažené v Python copy_call a gui_wait;
+tyto hodnoty se tedy nesčítají dohromady. První okno může obsahovat zahřátí GPU.
+
+JDE O PRVNÍ TESTOVACÍ VYDÁNÍ
+
+Testy v oficiálním Sliceru 5.12.4 ověřují stereo obraz, CT hloubku, vlastní
+shadery, živý ROI ořez a obnovu stavu i po chybě. Windows build,
+ABI a sdílení OpenGL textur mají samostatné testy. Přenos na cílovém PC již
+fungoval v předchozí verzi včetně brýlí. R8.4 obsahuje novou DLL přeloženou
+pro SDK dev.3008, výběr přijímačů podle presence a dosavadní obrazové panely
+s úhlopříčkou 14 palců. Běh nové DLL s Windows/QAROS a brýlemi je potřeba
+ověřit na cílovém PC. Po instalaci kontroluj Live plugin r8.4. QAROS a přehrávač
+v brýlích musí mít stejnou verzi; případné nové párování potvrď v Hubu.

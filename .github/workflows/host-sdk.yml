@@ -1,0 +1,47 @@
+name: Live host SDK compatibility
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'apps/**'
+      - 'src/**'
+      - 'include/**'
+      - 'integrations/slicer/**'
+      - 'ci/sdk-headers/**'
+      - 'tests/**'
+      - 'scripts/windows/Update-Live-Plugin.ps1'
+      - 'downloads/qarvtk-live-dev*.zip*'
+      - 'CMakeLists.txt'
+      - '.github/workflows/host-sdk.yml'
+permissions:
+  contents: read
+jobs:
+  host:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [session-022c40b6, session-c709c479, hub-a32cecd4, hub-55e6e3f4]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the VTK-free host DLL against the exact SDK
+        shell: pwsh
+        run: |
+          cmake -S . -B build-host -A x64 -DQARVTK_BUILD_RENDERER=OFF -DQARVTK_BUILD_HOST_BRIDGE=ON "-DQAROS_SDK_ROOT=$PWD/ci/sdk-headers/${{ matrix.sdk }}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build-host --config Release --parallel 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir build-host -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test the shipped DLL and Windows PowerShell 5.1 updater
+        if: matrix.sdk == 'hub-55e6e3f4'
+        shell: powershell
+        run: |
+          ./tests/test_live_update.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: live-host-${{ matrix.sdk }}
+          path: build-host/Release/qarvtk-host.dll
+          retention-days: 14

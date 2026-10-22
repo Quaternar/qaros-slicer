@@ -1,0 +1,50 @@
+name: Store Windows starter in Git
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/store-windows-starter.yml'
+permissions:
+  contents: read
+concurrency:
+  group: store-windows-starter
+  cancel-in-progress: false
+jobs:
+  store:
+    # Historical combined installers contain the retired Slicer module.
+    # Keep this definition for provenance; current installs use UPDATE-LIVE-PLUGIN.cmd.
+    if: ${{ false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download published r17 starter and verify SHA-256
+        run: |
+          mkdir -p downloads
+          gh release download windows-start-2026-10-15-session022c40b6r17 --pattern QAROS_VTK_Windows_session_022c40b6_2026-10-15_r17.zip --dir downloads --clobber
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          archive = Path('downloads/QAROS_VTK_Windows_session_022c40b6_2026-10-15_r17.zip')
+          expected = '159a782957174d25da8f4494e3ecc29a1f56607ef2767c11032f7e8e8f1b617a'
+          actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+          if actual != expected:
+              raise ValueError('Published starter checksum mismatch: ' + actual)
+          archive.with_suffix('.zip.sha256').write_text(expected + '  ' + archive.name + '\n')
+          PY
+      - name: Make the starter available through normal GitHub Desktop pull
+        run: |
+          git add -- downloads/QAROS_VTK_Windows_session_022c40b6_2026-10-15_r17.zip downloads/QAROS_VTK_Windows_session_022c40b6_2026-10-15_r17.zip.sha256
+          if git diff --cached --quiet; then
+            echo "The checked-out starter already matches the release."
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "Include verified Windows starter for GitHub Desktop checkout"
+          git push origin HEAD:main
+

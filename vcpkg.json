@@ -1,0 +1,8 @@
+{
+  "name": "qaros-vtk",
+  "version-string": "0.1.0",
+  "dependencies": [
+    {"name": "vtk", "default-features": false, "features": ["opengl"]},
+    "glfw3"
+  ]
+}

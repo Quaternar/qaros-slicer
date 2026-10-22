@@ -1,0 +1,5 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+*.sh text eol=lf
+*.ps1 text eol=crlf
+ci/sdk-headers/**/qar_streaming.h -text

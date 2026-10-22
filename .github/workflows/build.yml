@@ -1,0 +1,86 @@
+name: Build and test
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Slicer package upgrade removes the retired exporter
+        run: python3 tests/test_plugin_packaging.py
+      - name: Install development dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libvtk9-dev libglfw3-dev libgl1-mesa-dev xvfb
+      - name: Fetch pinned public SDK header for compile coverage (no runtime)
+        run: |
+          mkdir -p sdk/include
+          curl --fail --location --retry 3 https://raw.githubusercontent.com/Quaternar/qaros/678e5463bb14a9d4d1f681fcdb9dfab9fe61e77e/qar-streaming-c/include/qar_streaming.h -o sdk/include/qar_streaming.h
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DQARVTK_BUILD_SENDER=ON -DQAROS_SDK_ROOT=${{ github.workspace }}/sdk
+      - name: Build
+        run: cmake --build build -j 2
+      - name: Test with Mesa and Xvfb
+        run: xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 ctest --test-dir build --output-on-failure
+      - name: Preview smoke
+        run: xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 ./build/qarvtk-preview --hidden --frames 5
+      - name: SDK compile fingerprint
+        run: ./build/qarvtk-sender --sdk-info
+      - name: Compile the supplied session SDK branch (no runtime)
+        run: |
+          echo '022c40b670f87a066664c37daeb06da525db37fffdf5810e72cff8a5b81e677d  ci/sdk-headers/session-022c40b6/include/qar_streaming.h' | sha256sum --check
+          cmake -S . -B build -DQAROS_SDK_ROOT="$PWD/ci/sdk-headers/session-022c40b6"
+          cmake --build build --target qarvtk-sender -j 2
+          ./build/qarvtk-sender --sdk-info
+      - name: Surface interchange tests
+        run: |
+          /usr/bin/python3 tests/test_bridge.py
+          /usr/bin/python3 tests/test_scene.py
+          /usr/bin/python3 -m compileall -q integrations scripts
+  windows-core:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check diagnostic collector with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'scripts/windows/Collect-Logs.ps1'), [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors) { throw ($parseErrors | Out-String) }
+          ./scripts/windows/Collect-Logs.ps1 -OutputRoot "$env:RUNNER_TEMP/qarvtk-diagnostics-check" -NoOpen
+          ./tests/test_collect_logs.ps1
+      - run: cmake -S . -B build-core -DQARVTK_BUILD_RENDERER=OFF
+      - run: cmake --build build-core --config Release
+      - run: ctest --test-dir build-core -C Release --output-on-failure
+  paraview-bridge:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ParaView prerequisites
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1 libglu1-mesa libxt6t64 libxrender1 libsm6 libopengl0 libxkbcommon-x11-0 libxcb-xinerama0 libnss3
+      - uses: actions/cache@v4
+        with:
+          path: .cache/ParaView-5.12.1-linux.tar.gz
+          key: paraview-official-linux-5.12.1
+      - name: Download official ParaView with its matching Python
+        run: |
+          mkdir -p .cache build-paraview
+          if [ ! -f .cache/ParaView-5.12.1-linux.tar.gz ]; then
+            curl --fail --location --retry 3 https://www.paraview.org/files/v5.12/ParaView-5.12.1-MPI-Linux-Python3.10-x86_64.tar.gz -o .cache/ParaView-5.12.1-linux.tar.gz
+          fi
+          echo 'cd8d4b4dada44c8f36dc17e676cc5d8ae6b0a3c0449da9092e9df8bb8b5d48e7  .cache/ParaView-5.12.1-linux.tar.gz' | sha256sum --check
+          tar -xzf .cache/ParaView-5.12.1-linux.tar.gz --strip-components=1 -C build-paraview
+      - name: Package plugins and build process test fixture
+        run: |
+          python3 scripts/package_plugins.py
+          cmake -S . -B build-fixture -DQARVTK_BUILD_RENDERER=OFF
+          cmake --build build-fixture --parallel 2
+      - name: Export a real ParaView pipeline and verify world bounds
+        run: xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 build-paraview/bin/pvpython tests/paraview_smoke.py
+      - name: Load packaged plugin and exercise process controls
+        run: xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 QARVTK_TEST_BACKEND="$PWD/build-fixture/qarvtk-process-fixture" build-paraview/bin/pvpython tests/paraview_plugin_smoke.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: QAROS-VTK-python-plugins
+          path: package/QAROS-VTK-plugins.zip
+          retention-days: 30

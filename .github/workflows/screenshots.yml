@@ -1,0 +1,70 @@
+name: Linux plugin screenshots
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/screenshots.yml'
+      - 'scripts/screenshots/**'
+permissions:
+  contents: read
+jobs:
+  capture:
+    name: ${{ matrix.app }} GUI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [slicer, paraview]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux GUI prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb openbox imagemagick wmctrl xdotool libgl1 libglu1-mesa libxt6t64 libxrender1 libsm6 libopengl0 libxkbcommon-x11-0 libxcb-xinerama0 libnss3 libpulse-mainloop-glib0 libasound2t64 qt5dxcb-plugin
+      - uses: actions/cache@v4
+        if: matrix.app == 'slicer'
+        with:
+          path: .cache/Slicer-5.12.4-linux-amd64.tar.gz
+          key: slicer-linux-5.12.4-34645
+      - uses: actions/cache@v4
+        if: matrix.app == 'paraview'
+        with:
+          path: .cache/ParaView-5.12.1-linux.tar.gz
+          key: paraview-official-linux-5.12.1
+      - name: Prepare Slicer 5.12.4
+        if: matrix.app == 'slicer'
+        run: |
+          mkdir -p .cache build-slicer
+          if [ ! -f .cache/Slicer-5.12.4-linux-amd64.tar.gz ]; then
+            curl --fail --location --retry 3 https://download.slicer.org/bitstream/6aa1beb7ce9de556d3010204 -o .cache/Slicer-5.12.4-linux-amd64.tar.gz
+          fi
+          echo 'ac76c5061a8fff20d4e59732855f74360930fd4891450085bcbc6a8eb1a1f4ade9a1ca4fc633142661b714dbe8c4604306079f9546e52053faa5e6f99410cf76  .cache/Slicer-5.12.4-linux-amd64.tar.gz' | sha512sum --check
+          tar -xzf .cache/Slicer-5.12.4-linux-amd64.tar.gz --strip-components=1 -C build-slicer
+      - name: Prepare ParaView 5.12.1
+        if: matrix.app == 'paraview'
+        run: |
+          mkdir -p .cache build-paraview
+          if [ ! -f .cache/ParaView-5.12.1-linux.tar.gz ]; then
+            curl --fail --location --retry 3 https://www.paraview.org/files/v5.12/ParaView-5.12.1-MPI-Linux-Python3.10-x86_64.tar.gz -o .cache/ParaView-5.12.1-linux.tar.gz
+          fi
+          echo 'cd8d4b4dada44c8f36dc17e676cc5d8ae6b0a3c0449da9092e9df8bb8b5d48e7  .cache/ParaView-5.12.1-linux.tar.gz' | sha256sum --check
+          tar -xzf .cache/ParaView-5.12.1-linux.tar.gz --strip-components=1 -C build-paraview
+      - name: Package current plugins
+        run: python3 scripts/package_plugins.py
+      - name: Capture Slicer
+        if: matrix.app == 'slicer'
+        run: xvfb-run -a -s '-screen 0 1720x1080x24' python3 scripts/screenshots/capture.py slicer build-slicer/Slicer
+      - name: Capture ParaView
+        if: matrix.app == 'paraview'
+        run: xvfb-run -a -s '-screen 0 1720x1080x24' python3 scripts/screenshots/capture.py paraview build-paraview/bin/paraview
+      - name: Report application log
+        if: always()
+        run: cat screenshots/*.log || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: QAROS-${{ matrix.app }}-Linux-screenshots
+          path: screenshots/
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,0 +1,89 @@
+name: Windows native build
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'apps/**'
+      - 'src/**'
+      - 'include/**'
+      - 'CMakeLists.txt'
+      - 'vcpkg.json'
+      - 'vcpkg-configuration.json'
+      - 'cmake/triplets/**'
+      - 'ci/sdk-headers/**'
+      - '.github/workflows/windows-native.yml'
+permissions:
+  contents: read
+jobs:
+  windows-native:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    env:
+      VCPKG_BINARY_SOURCES: 'clear;files,C:\vcpkg-cache,readwrite'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: C:\vcpkg-cache
+          key: windows-release-vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'cmake/triplets/**') }}
+      - name: Fetch pinned public SDK header (compile only)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force sdk/include | Out-Null
+          Invoke-WebRequest https://raw.githubusercontent.com/Quaternar/qaros/678e5463bb14a9d4d1f681fcdb9dfab9fe61e77e/qar-streaming-c/include/qar_streaming.h -OutFile sdk/include/qar_streaming.h
+      - name: Configure with vcpkg
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force C:/vcpkg-cache | Out-Null
+          cmake -S . -B build-windows -G "Visual Studio 17 2022" -A x64 "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" "-DVCPKG_OVERLAY_TRIPLETS=$env:GITHUB_WORKSPACE/cmake/triplets" -DVCPKG_TARGET_TRIPLET=x64-windows-release -DQARVTK_BUILD_SENDER=ON "-DQAROS_SDK_ROOT=$env:GITHUB_WORKSPACE/sdk"
+      - name: Compile renderer, preview and sender
+        run: cmake --build build-windows --config Release --parallel 4
+      - name: Core tests and SDK fingerprint (runner has no supported XR GPU)
+        shell: pwsh
+        run: |
+          ctest --test-dir build-windows -C Release -R '^(core|legacy-peer|legacy-frame-wait|wgl-callback)$' --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./build-windows/Release/qarvtk-sender.exe --sdk-info
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-preview-and-sender-no-qaros-runtime
+          path: |
+            build-windows/Release/*.exe
+            build-windows/Release/*.dll
+            build-windows/qarvtk-sdk.json
+          retention-days: 14
+      - name: Configure sender for the supplied session SDK
+        shell: pwsh
+        run: |
+          $sdk = Join-Path $env:GITHUB_WORKSPACE 'ci/sdk-headers/session-022c40b6'
+          $expected = '022c40b670f87a066664c37daeb06da525db37fffdf5810e72cff8a5b81e677d'
+          if ((Get-FileHash "$sdk/include/qar_streaming.h" -Algorithm SHA256).Hash -ine $expected) { throw 'Session SDK header checksum mismatch' }
+          cmake -S . -B build-windows "-DQAROS_SDK_ROOT=$sdk"
+      - name: Compile session sender and verify embedded fingerprint
+        shell: pwsh
+        run: |
+          cmake --build build-windows --config Release --target qarvtk-sender --parallel 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $metadata = ./build-windows/Release/qarvtk-sender.exe --sdk-info
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $info = $metadata | ConvertFrom-Json
+          if ($info.header_sha256 -ne '022c40b670f87a066664c37daeb06da525db37fffdf5810e72cff8a5b81e677d' -or $info.modern_api -ne 0 -or $info.plugin_protocol -ne 2) { throw 'Incorrect session sender fingerprint or API mode' }
+          Write-Output $metadata
+      - name: Build live host transport without VTK, Qt or GLFW
+        shell: pwsh
+        run: |
+          cmake -S . -B build-host -A x64 -DQARVTK_BUILD_RENDERER=OFF -DQARVTK_BUILD_HOST_BRIDGE=ON "-DQAROS_SDK_ROOT=$PWD/ci/sdk-headers/session-022c40b6"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build-host --config Release --parallel 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir build-host -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item build-host/Release/qarvtk-host.dll build-windows/Release/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-session-022c40b6-no-qaros-runtime
+          path: |
+            build-windows/Release/*.exe
+            build-windows/Release/*.dll
+            build-windows/qarvtk-sdk.json
+          retention-days: 14

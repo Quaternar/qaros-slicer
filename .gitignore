@@ -1,0 +1,15 @@
+/build*/
+/.cache/
+/package/
+/sdk/
+/results/
+/vcpkg_installed/
+/.venv/
+__pycache__/
+*.pyc
+*.onboarding-id.txt
+*.invite.json
+*.log
+core
+
+diagnostics/

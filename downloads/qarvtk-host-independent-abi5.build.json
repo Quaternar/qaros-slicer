@@ -1,0 +1,36 @@
+{
+  "host_abi": 5,
+  "architecture": "Windows x64",
+  "sdk_header_sha256": "022c40b670f87a066664c37daeb06da525db37fffdf5810e72cff8a5b81e677d",
+  "compiler": "MinGW-w64 GCC 13.2.0-6ubuntu1+26.1 (posix), Ubuntu noble",
+  "native_base_commit": "3c0af08e5dac8771d3a5b311c0b56df83a91da8d",
+  "changed_native_sources_sha256": {
+    "src/host_bridge.cpp": "0b9c0f81fb125fb51994b5d37d0079e5b4b8f67363885b9c625fab4f8804b750",
+    "include/qarvtk/host_bridge.h": "d9da599a7121e634500b0d45d7ac5041533b097ee2cc770db9c601105c65c195",
+    "include/qarvtk/host_stream_scheduler.hpp": "f8bff2ae14f9e7988f38bf94e20188287443af330ce7604d65a09136ca5cab8e",
+    "include/qarvtk/host_stream_startup.hpp": "ab3038c709595e2cee455193d5d6ac380716c8a52f620f886597cf8fe8d50794"
+  },
+  "dll_sha256": "e58104e4213a849c9bb41b6f70d37c6bea03989f5cfc93933a292c839315b475",
+  "build_script": "scripts/build_host_cross.sh",
+  "imports": [
+    "GDI32.dll",
+    "KERNEL32.dll",
+    "msvcrt.dll",
+    "OPENGL32.dll",
+    "USER32.dll"
+  ],
+  "validation": [
+    "Windows x64 cross-compilation and static ABI size assertions",
+    "PE exports and system-only imports",
+    "VTK 9.6.2 EGL isolated workspace color/depth and restoration tests",
+    "Python transport routing and lifecycle tests",
+    "C++ frame lease, scheduling, placement and legacy wait tests",
+    "First frame during blocked second negotiation; one failed connection preserves ready senders; pending-create cancellation and join"
+  ],
+  "not_validated": [
+    "Windows DLL load and WGL/SDK operation",
+    "NVIDIA encoding and Visualizer/Quest multi-workspace manipulation",
+    "Full Slicer MRML/Qt integration"
+  ],
+  "build_id": "independent-startup-r2"
+}

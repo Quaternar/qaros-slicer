@@ -1,0 +1,79 @@
+name: Publish Windows starter
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'releases/windows-start.json'
+permissions:
+  contents: read
+concurrency:
+  group: windows-starter-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    # Historical combined installers contain the retired Slicer module.
+    # Keep this definition for provenance; current installs use UPDATE-LIVE-PLUGIN.cmd.
+    if: ${{ false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read explicit release request
+        id: request
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          config = json.loads(Path('releases/windows-start.json').read_text())
+          values = {'tag': config['tag'], 'title': config['title'], 'filename': config['filename']}
+          if not re.fullmatch(r'windows-start-\d{4}-\d{2}-\d{2}(?:-[a-z0-9]+)?', values['tag']):
+              raise ValueError('Invalid release tag')
+          for kind in ('native', 'plugins'):
+              for field in ('run_id', 'artifact_id'):
+                  values[kind + '_' + field] = str(int(config[kind][field]))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+              for key, value in values.items():
+                  if '\n' in value or '\r' in value:
+                      raise ValueError('Multiline output is not allowed')
+                  stream.write(key + '=' + value + '\n')
+          PY
+      - name: Download pinned CI outputs
+        env:
+          NATIVE_ID: ${{ steps.request.outputs.native_artifact_id }}
+          PLUGINS_ID: ${{ steps.request.outputs.plugins_artifact_id }}
+          NATIVE_RUN: ${{ steps.request.outputs.native_run_id }}
+          PLUGINS_RUN: ${{ steps.request.outputs.plugins_run_id }}
+        run: |
+          mkdir -p .cache/windows-start
+          gh api "repos/$GH_REPO/actions/runs/$NATIVE_RUN" > .cache/windows-start/native-run.json
+          gh api "repos/$GH_REPO/actions/runs/$PLUGINS_RUN" > .cache/windows-start/plugins-run.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          config = json.loads(Path('releases/windows-start.json').read_text())
+          for kind in ('native', 'plugins'):
+              run = json.loads(Path('.cache/windows-start/' + kind + '-run.json').read_text())
+              if run['conclusion'] != 'success' or run['status'] != 'completed':
+                  raise ValueError(kind + ' build is not successful')
+              if run['head_sha'] != config[kind]['commit']:
+                  raise ValueError(kind + ' build commit mismatch')
+          PY
+          gh api "repos/$GH_REPO/actions/artifacts/$NATIVE_ID/zip" > .cache/windows-start/native.zip
+          gh api "repos/$GH_REPO/actions/artifacts/$PLUGINS_ID/zip" > .cache/windows-start/plugins.zip
+      - name: Verify checksums and assemble starter
+        run: |
+          python3 scripts/package_windows_start.py --native-archive .cache/windows-start/native.zip --plugins-archive .cache/windows-start/plugins.zip
+      - name: Publish prerelease with downloadable ZIP
+        env:
+          RELEASE_TAG: ${{ steps.request.outputs.tag }}
+          RELEASE_TITLE: ${{ steps.request.outputs.title }}
+          RELEASE_FILE: ${{ steps.request.outputs.filename }}
+        run: |
+          gh release create "$RELEASE_TAG" "dist/windows-start/$RELEASE_FILE" "dist/windows-start/$RELEASE_FILE.sha256" --target "$GITHUB_SHA" --prerelease --latest=false --title "$RELEASE_TITLE" --notes-file dist/windows-start/release-notes.md

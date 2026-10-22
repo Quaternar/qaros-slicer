@@ -1,0 +1,6 @@
+Tento postup pro samostatny Slicer renderer je zruseny.
+
+Pouzij UPDATE-LIVE-PLUGIN.cmd z aktualniho mainu a navod
+docs/INSTALLATION.md nebo docs/WINDOWS_LIVE_QUICKSTART.txt.
+Ve Sliceru zustava jediny modul QAROS Live Renderer.
+Stary QAROS Streaming se jiz neinstaluje.
