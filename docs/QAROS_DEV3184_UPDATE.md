@@ -1,4 +1,4 @@
-# Slicer Live r8.5 with QAROS dev.3184
+# Slicer Live r8.6 with QAROS dev.3184
 
 This update targets the complete installed **QAROS 0.9.0-dev.3184+2ccfb349**
 on Windows x64, inspected on 2026-10-30. The registry and installed changelog
@@ -10,12 +10,35 @@ report this version. The exact header is pinned in
 
 1. Stop streaming and close Slicer completely.
 2. Update the checkout and run `UPDATE-LIVE-PLUGIN.cmd`.
-3. Open Slicer and check **Live plugin r8.5** in QAROS Live Renderer.
+3. Open Slicer and check **Live plugin r8.6** in QAROS Live Renderer.
 4. Keep QAROS and headset players on the same version. This QAROS release
    changes app approvals and headset pairing; complete the Hub's prompts
    if requested. The plugin does not delete or replace QAROS identities.
-5. Start a Visualizer receiver and/or connect a headset, choose **Stream to**,
-   and start streaming. Existing Additional module paths remain valid.
+5. Start Visualizer receivers and/or connect headsets. Check the specific
+   connected receivers under **Stream to**, then start streaming. Several
+   headsets of the same model can be checked together, up to eight total
+   receivers. Offline receivers are disabled; a connected Visualizer can be
+   used without a headset. Existing Additional module paths remain valid.
+
+## Persistent connection and explicit selection in r8.6
+
+Opening the module connects to the Hub once, with the explicit application tag
+`slicer.qaros.quaternar`. The tag does not contain a date, PID, random id or
+plugin version. **Start/Stop** reuses that connection and does not enroll a
+new source. **Disconnect**, module cleanup or application exit closes it.
+Old entries already present in QAROS are not deleted by this update.
+
+The receiver list refreshes from the SDK subscription. Check marks are saved
+by peer id, not by row position or display name. A replacement receiver is
+never selected automatically because it has the same name or category.
+Changing the selected targets requires Stop. A disconnected target that was
+part of a running stream keeps its own SDK reconnect path; other selected
+receivers are not replaced or redirected.
+
+Each selected receiver has its own stereo sender and shared WGL context per
+source volume. The renderer still leases at most one frame at a time across
+all receiver/volume routes. Slice panels are visible only to selected receivers
+whose stream setup has completed.
 
 The updater installs `downloads/qarvtk-live-dev3184.zip`. It verifies the
 SDK fingerprint, archive checksum, ABI and payload hashes before replacing

@@ -9,8 +9,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SDK_SHA = 'f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52'
-BUILD = 'installed-hub-update-r8.5'
-NATIVE_BUILD = 'installed-hub-update-r8.5'
+BUILD = 'installed-hub-update-r8.6'
+NATIVE_BUILD = 'installed-hub-update-r8.6'
 
 
 def package(dll, output, compiler):
@@ -33,6 +33,10 @@ def package(dll, output, compiler):
         raise ValueError('DLL does not provide Visualizer + headset streaming')
     if b'"runtime_handle_only":1' not in native:
         raise ValueError('DLL does not provide runtime handle-only cleanup')
+    for capability in (b'"device_selection":1', b'"persistent_connection":1',
+                       b'"stable_app_tag":"slicer.qaros.quaternar"', b'"max_selected_targets":8'):
+        if capability not in native:
+            raise ValueError('DLL lacks persistent connected-receiver selection')
     if ('Host build: ' + NATIVE_BUILD + ' (ABI 5)').encode() not in native:
         raise ValueError('DLL does not match this Live update build')
     payload = {'Release/qarvtk-host.dll': native,
@@ -50,8 +54,10 @@ def package(dll, output, compiler):
                 default_model_scale=1.0, model_scale_range=[0.125, 8.0],
                 slice_panel_diagonal_inches=14.0,
                 orientation_mode='fixed_ras', panel_size_on_start=1, panel_image_region=1,
-                multi_target=1, default_target_mode='both',
-                max_visualizer_targets=1, max_headset_targets=1,
+                multi_target=1, default_target_mode='selected',
+                device_selection=1, persistent_connection=1,
+                stable_app_tag='slicer.qaros.quaternar', max_selected_targets=8,
+                max_visualizer_targets=8, max_headset_targets=8,
                 runtime_teardown='handle_only',
                 panel_registration_snapshot='none',
                 runtime_included=False, live_gpu_tested=False,

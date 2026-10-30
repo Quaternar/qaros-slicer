@@ -11,6 +11,7 @@ extern "C" {
 
 typedef struct QarvtkHost QarvtkHost;
 typedef struct QarvtkHostPanel QarvtkHostPanel;
+typedef struct QarvtkHub QarvtkHub;
 typedef struct QarvtkHostPlacement {
   double position[3], orientation[4], app_scale; /* app_pose in volume metres */
   double workspace_size[3]; /* full extents along volume X/Y/Z, in metres */
@@ -37,9 +38,21 @@ typedef struct QarvtkHostFrame {
    No borrowed GPU texture survives color/depth returning. SDK frame ownership
    remains leased until finish or stop. Never unload this DLL with live handles. */
 QARVTK_HOST_API const char* qarvtk_host_info(void);
+/* Persistent local-app enrollment and receiver discovery, independent of VTK.
+   Connect and Stop are asynchronous; destroy returns 0 until all streams and
+   SDK cleanup finish. Poll returns 1 ready, 0 connecting, 2 stopped, -1 failed
+   and writes a complete UTF-8 JSON snapshot. Keep the Hub alive across Start/Stop. */
+QARVTK_HOST_API int qarvtk_hub_connect(const char* sdk_root,const char* log_folder,
+    QarvtkHub** result,char* error,uint32_t error_size);
+QARVTK_HOST_API int qarvtk_hub_poll(QarvtkHub*,char* json,uint32_t size);
+QARVTK_HOST_API void qarvtk_hub_stop(QarvtkHub*);
+QARVTK_HOST_API int qarvtk_hub_destroy(QarvtkHub*);
+/* Comma-separated exact receiver ids from hub_poll. No category fallback. */
+QARVTK_HOST_API int qarvtk_host_create_selected(QarvtkHub*,const char* peer_ids,const char* log_folder,
+    const QarvtkHostVolume*,uint32_t count,QarvtkHost** result,char* error,uint32_t error_size);
 QARVTK_HOST_API int qarvtk_host_create(const char* sdk_root,const char* target,const char* log_folder,
                                      const QarvtkHostPlacement*,QarvtkHost** result,char* error,uint32_t error_size);
-/* One session/viewer, one independently movable app volume and sender per entry.
+/* One session, one independently movable app volume per entry.
    At most one frame is leased to the GUI at a time, fairly across ready senders. */
 QARVTK_HOST_API int qarvtk_host_create_volumes(const char* sdk_root,const char* target,const char* log_folder,
     const QarvtkHostVolume*,uint32_t count,QarvtkHost** result,char* error,uint32_t error_size);

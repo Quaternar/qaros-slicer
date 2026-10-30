@@ -1,10 +1,10 @@
-QAROS Live Renderer — r8.5 pro instalované QAROS dev.3184
+QAROS Live Renderer — r8.6 pro instalované QAROS dev.3184
 
 AKTUALIZACE
 
 1. Zastav přenos a zavři Slicer.
 2. GitHub Desktop → QAROS_VTK / main → Fetch origin → Pull origin.
-3. Spusť D:\QAROS_VTK\UPDATE-LIVE-PLUGIN.cmd. Ověří SDK a nainstaluje r8.5 včetně DLL; funguje i při první instalaci.
+3. Spusť D:\QAROS_VTK\UPDATE-LIVE-PLUGIN.cmd. Ověří SDK a nainstaluje r8.6 včetně DLL; funguje i při první instalaci.
 4. Otevři instalované QAROS a Slicer.
 5. Zvol QAROS → QAROS Live Renderer.
 
@@ -23,11 +23,10 @@ PRVNÍ TEST
 4. Otevři QAROS Live Renderer a zkontroluj:
    Host bridge DLL: D:/QAROS_VTK/package/windows-start/Release/qarvtk-host.dll
    QAROS SDK folder: C:/Program Files/Quaternar/QAROS (nebo tvoje skutečná instalace)
-   Stream to: Visualizer only pro první test s jedním běžícím receiverem; Headset only pro brýle
+   Stream to: zaškrtni připojené přijímače; lze vybrat více headsetů i Visualizerů současně
    Center model in workspace at Start: zapnuto
    Model size (at Start): 1x (1:1); posuvník 1/8x až 8x, tlačítko 1:1 vrátí skutečnou velikost
-   Use Slicer viewing direction at Start: zapnuto
-   Show slice views as panels (preview only): zapnuto
+   Show image-only slice panels (preview only): zapnuto
    Slice preview FPS limit: 15; pro rychlejší video můžeš zvolit 30
    Render resolution: 100 % pro původní kvalitu; 50 % pro porovnání rychlosti
 5. Klikni Start live streaming a nech Visualizer viditelný.
@@ -165,8 +164,8 @@ JDE O PRVNÍ TESTOVACÍ VYDÁNÍ
 Testy v oficiálním Sliceru 5.12.4 ověřují stereo obraz, CT hloubku, vlastní
 shadery, živý ROI ořez a obnovu stavu i po chybě. Windows build,
 ABI a sdílení OpenGL textur mají samostatné testy. Přenos na cílovém PC již
-fungoval v předchozí verzi včetně brýlí. R8.5 obsahuje novou DLL přeloženou
+fungoval v předchozí verzi včetně brýlí. R8.6 obsahuje novou DLL přeloženou
 pro SDK dev.3184, výběr přijímačů podle presence a dosavadní obrazové panely
 s úhlopříčkou 14 palců. Běh nové DLL s Windows/QAROS a brýlemi je potřeba
-ověřit na cílovém PC. Po instalaci kontroluj Live plugin r8.5. QAROS a přehrávač
+ověřit na cílovém PC. Po instalaci kontroluj Live plugin r8.6. QAROS a přehrávač
 v brýlích musí mít stejnou verzi; případné nové párování potvrď v Hubu.

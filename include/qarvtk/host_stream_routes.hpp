@@ -11,7 +11,7 @@ class HostStreamRoutes {
 public:
   struct Address {std::size_t target,volume;};
   HostStreamRoutes(std::size_t volumes,std::size_t targets):volumes_(volumes),targets_(targets){
-    if(!volumes||volumes>32||!targets||targets>2)throw std::invalid_argument("Invalid host stream routes");
+    if(!volumes||volumes>32||!targets||targets>8)throw std::invalid_argument("Invalid host stream routes");
   }
   std::size_t size()const{return volumes_*targets_;}
   std::size_t index(std::size_t target,std::size_t volume)const{

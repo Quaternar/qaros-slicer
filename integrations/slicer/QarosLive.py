@@ -1,6 +1,7 @@
 """Experimental direct streaming of Slicer's own render window."""
 from datetime import datetime
 from pathlib import Path
+from time import perf_counter
 import json
 import sys
 import qt
@@ -8,17 +9,19 @@ import ctk
 import slicer
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule, ScriptedLoadableModuleWidget
 
-LIVE_VERSION = "r8.5"
+LIVE_VERSION = "r8.6"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 if (Path(__file__).resolve().parent / "QarosVTKLib").is_dir():
     from QarosVTKLib.qarvtk_host_view import create_host_views, workspace_envelope
-    from QarosVTKLib.qarvtk_host_runtime import HostTransport, default_sdk_path, default_host_dll_path
+    from QarosVTKLib.qarvtk_host_runtime import (HostTransport, HubConnection, DeviceSelection,
+                                               MAX_SELECTED_TARGETS, default_sdk_path, default_host_dll_path)
     from QarosVTKLib.qarvtk_host_panels import SlicePanels
     from QarosVTKLib.qarvtk_runtime import user_directory
 else:
     from qarvtk_host_view import create_host_views, workspace_envelope
-    from qarvtk_host_runtime import HostTransport, default_sdk_path, default_host_dll_path
+    from qarvtk_host_runtime import (HostTransport, HubConnection, DeviceSelection,
+                                    MAX_SELECTED_TARGETS, default_sdk_path, default_host_dll_path)
     from qarvtk_host_panels import SlicePanels
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from qarvtk_runtime import user_directory
@@ -38,6 +41,11 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
     def setup(self):
         super().setup()
         self.transport = None
+        self.connection = None
+        self.nextDevicePoll = 0.
+        self.activeReceiverIds = []
+        self.lastStartError = None
+        self.lastStreamRunning = False
         self.cleaned_up = False
         self.settings = qt.QSettings()
         form = qt.QFormLayout()
@@ -123,18 +131,34 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
         self.sdk.currentPath = default_sdk_path(self.settings.value(
             "QAROS_LIVE/Sdk", self.settings.value("QAROS_VTK/Sdk", "")))
         form.addRow("QAROS SDK folder", self.sdk)
-        self.target = qt.QComboBox()
-        self.targetModes = ("both", "visualizer", "headset")
-        self.target.addItems(["Visualizer + headset", "Visualizer only", "Headset only"])
-        saved_target = str(self.settings.value("QAROS_LIVE/Target", "both"))
-        self.target.currentIndex = self.targetModes.index(saved_target) if saved_target in self.targetModes else 0
-        self.target.toolTip = "Supports one Visualizer receiver and one headset. Each has its own stereo view. " \
-            "Connect the headset through QAROS; it can join after streaming starts. Applied at Start."
-        form.addRow("Stream to", self.target)
-        self.hubHint = qt.QLabel("Connect HoloLens in QAROS and allow Slicer when prompted. Visualizer + headset sends the volumes and slice panels to both; either target may join later. Keep QAROS and the headset player on the same version. For a replaced receiver, stop and restart streaming.")
+        try:
+            saved_receivers = self.settings.value("QAROS_LIVE/Receivers", "[]")
+            saved_receivers = json.loads(saved_receivers) if isinstance(saved_receivers, str) else list(saved_receivers)
+            if not isinstance(saved_receivers, list): saved_receivers = []
+        except (TypeError, ValueError):
+            saved_receivers = []
+        self.deviceSelection = DeviceSelection(saved_receivers)
+        self.deviceRows = {}
+        self.connectButton = qt.QPushButton("Connect to QAROS")
+        self.disconnectButton = qt.QPushButton("Disconnect")
+        self.connectButton.connect("clicked()", self.connect_hub)
+        self.disconnectButton.connect("clicked()", self.disconnect_hub)
+        form.addRow(self.connectButton, self.disconnectButton)
+        self.connectionStatus = qt.QLabel("Not connected to QAROS.")
+        self.connectionStatus.wordWrap = True
+        form.addRow(self.connectionStatus)
+        self.receiverWidget = qt.QWidget()
+        self.receiverLayout = qt.QVBoxLayout(self.receiverWidget)
+        self.receiverLayout.setContentsMargins(0, 0, 0, 0)
+        self.noReceivers = qt.QLabel("Connect a headset or start a Visualizer receiver in QAROS.")
+        self.noReceivers.wordWrap = True
+        self.receiverLayout.addWidget(self.noReceivers)
+        form.addRow("Stream to", self.receiverWidget)
+        self.hubHint = qt.QLabel("Check the connected receivers to use. Several headsets and Visualizer receivers can stream together (up to eight receivers). Unavailable receivers cannot be selected. Stop streaming to change the selection. Keep QAROS and headset players on the same version.")
         self.hubHint.wordWrap = True
         form.addRow(self.hubHint)
         self.startButton = qt.QPushButton("Start live streaming")
+        self.startButton.enabled = False
         self.stopButton = qt.QPushButton("Stop live streaming")
         form.addRow(self.startButton, self.stopButton)
         self.stopButton.enabled = False
@@ -158,6 +182,94 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
             self.layout_manager.connect("layoutChanged(int)", self.layout_changed)
         slicer.app.connect("aboutToQuit()", self.cleanup)
         self.layout.addStretch(1)
+        self.update_controls()
+        if getattr(self, "autoConnect", True):
+            qt.QTimer.singleShot(0, self.connect_hub)
+
+    def connect_hub(self, *args):
+        if self.cleaned_up or (self.connection and self.connection.running):
+            return
+        try:
+            folder = user_directory() / "live-logs" / ("hub-" + datetime.now().strftime("%Y%m%d-%H%M%S-%f"))
+            self.connection = HubConnection(self.dll.currentPath, self.sdk.currentPath, folder)
+            self.lastStartError = None
+            self.nextDevicePoll = 0.
+            self.settings.setValue("QAROS_LIVE/Dll", self.dll.currentPath)
+            self.settings.setValue("QAROS_LIVE/Sdk", self.sdk.currentPath)
+            self.connectionStatus.text = "Connecting to QAROS. Approve Slicer if prompted."
+        except Exception as error:
+            self.connectionStatus.text = str(error)
+        self.update_controls()
+
+    def disconnect_hub(self, *args):
+        if self.transport and self.transport.running:
+            self.transport.request_stop("Disconnect from QAROS")
+        if self.connection:
+            self.connection.request_stop()
+        self.nextDevicePoll = 0.
+        self.update_controls()
+
+    def select_device(self, key, checked):
+        try:
+            self.deviceSelection.select(key, checked)
+            self.lastStartError = None
+            self.settings.setValue("QAROS_LIVE/Receivers", json.dumps(sorted(self.deviceSelection.checked)))
+        except ValueError as error:
+            self.connectionStatus.text = str(error)
+        self.update_device_rows()
+        self.update_controls()
+
+    def update_device_rows(self):
+        running = bool(self.transport and self.transport.running)
+        keys = {peer["id"] for peer in self.deviceSelection.peers}
+        for key in list(self.deviceRows):
+            if key not in keys:
+                row = self.deviceRows.pop(key)
+                self.receiverLayout.removeWidget(row)
+                row.deleteLater()
+        self.noReceivers.visible = not keys
+        labels = [(p.get("name", ""), p.get("device", "")) for p in self.deviceSelection.peers]
+        for peer in self.deviceSelection.peers:
+            key = peer["id"]
+            if key not in self.deviceRows:
+                box = qt.QCheckBox()
+                box.connect("toggled(bool)", lambda checked, key=key: self.select_device(key, checked))
+                self.deviceRows[key] = box
+                self.receiverLayout.addWidget(box)
+            box = self.deviceRows[key]
+            name = peer.get("name") or ("Headset" if peer["category"] == "headset" else "Visualizer")
+            device = peer.get("device", "")
+            state = "Connected" if peer["available"] else "Disconnected"
+            suffix = " [" + key[-6:] + "]" if labels.count((peer.get("name", ""), device)) > 1 else ""
+            box.text = name + (" · " + device if device and device != name else "") + suffix + " — " + state
+            box.toolTip = "Receiver ID: " + key + ". Selection stays with this exact receiver."
+            previous = box.blockSignals(True)
+            box.checked = key in (self.activeReceiverIds if running else self.deviceSelection.checked) and (peer["available"] or running)
+            box.blockSignals(previous)
+            box.enabled = peer["available"] and not running
+
+    def update_controls(self):
+        if self.cleaned_up:
+            return
+        running = bool(self.transport and self.transport.running)
+        if running != self.lastStreamRunning:
+            self.lastStreamRunning = running
+            self.update_device_rows()
+        connected = bool(self.connection and self.connection.connected)
+        connecting = bool(self.connection and self.connection.running)
+        count = len(self.deviceSelection.selected_ids())
+        self.startButton.enabled = not running and connected and 0 < count <= MAX_SELECTED_TARGETS
+        self.stopButton.enabled = running and not self.transport.stopping
+        self.connectButton.enabled = not connecting and not running
+        self.disconnectButton.enabled = connecting and not self.connection.stopping and not running
+        self.sdk.enabled = self.dll.enabled = not connecting and not running
+        for control in (self.separateVolumes, self.fit, self.modelScale, self.resetScale,
+                        self.renderScale, self.slicePreviews, self.sliceFps):
+            control.enabled = not running
+        if connected and not running and not self.lastStartError:
+            self.status.text = ("Select at most eight receivers." if count > MAX_SELECTED_TARGETS else
+                               str(count) + " receiver(s) selected. Ready to stream." if count else
+                                "Check at least one connected receiver above. No headset is required when a Visualizer is selected.")
 
     def start_stream(self):
         hosts = []
@@ -165,6 +277,9 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
         try:
             if self.transport and self.transport.running:
                 return
+            selected_receivers = self.deviceSelection.selected_ids()
+            if not self.connection or not self.connection.connected or not selected_receivers:
+                raise RuntimeError("Connect to QAROS and check at least one connected receiver")
             lm = slicer.app.layoutManager()
             if not lm or lm.threeDViewCount < 1:
                 raise RuntimeError("Open a Slicer layout containing a 3D view")
@@ -180,9 +295,11 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
                 size_multiplier=2. ** (self.modelScale.value / 100.),
                 render_scale=(1., .75, .5)[self.renderScale.currentIndex])
             folder = user_directory() / "live-logs" / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-            target_mode = self.targetModes[self.target.currentIndex]
             self.transport = HostTransport(self.dll.currentPath, self.sdk.currentPath,
-                                            target_mode, folder, hosts)
+                                            "selected", folder, hosts,
+                                            connection=self.connection, selected_peers=selected_receivers)
+            self.lastStartError = None
+            self.activeReceiverIds = list(selected_receivers)
             created_transport = self.transport
             self.transport.diagnostics.event("PLUGIN " + json.dumps(dict(
                 version=LIVE_VERSION, path=str(Path(__file__).resolve()), orientation_mode="fixed_ras")))
@@ -193,12 +310,13 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
                                                  + " cm" for host in hosts)
             self.settings.setValue("QAROS_LIVE/Dll", self.dll.currentPath)
             self.settings.setValue("QAROS_LIVE/Sdk", self.sdk.currentPath)
-            self.settings.setValue("QAROS_LIVE/Target", target_mode)
+            self.settings.setValue("QAROS_LIVE/Receivers", json.dumps(sorted(self.deviceSelection.checked)))
             self.logPath.text = str(folder)
             self.startButton.enabled = False
             self.stopButton.enabled = True
             self.status.text = "Connecting the live Slicer renderer..."
         except Exception as error:
+            self.lastStartError = str(error)
             if created_transport:
                 created_transport.request_stop("Startup error: " + str(error))
             else:
@@ -240,6 +358,21 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
             layout=int(layout), action="continue", desktop_size=list(transport.host.window.GetSize()))))
 
     def tick(self):
+        now = perf_counter()
+        if self.connection and now >= self.nextDevicePoll:
+            self.nextDevicePoll = now + .5
+            try:
+                snapshot = self.connection.tick()
+                self.deviceSelection.update(snapshot)
+                if self.connection.stopping and self.transport and self.transport.running:
+                    self.transport.request_stop("QAROS connection ended")
+                if not self.cleaned_up:
+                    self.connectionStatus.text = snapshot.get("status", "QAROS connection")
+                    self.update_device_rows()
+            except Exception as error:
+                self.disconnect_hub()
+                if not self.cleaned_up:
+                    self.connectionStatus.text = str(error)
         if self.transport:
             try:
                 self.transport.tick()
@@ -249,15 +382,11 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
                     self.panelStatus.text = getattr(self.transport, "panel_status_text", "Slice previews off")
             except Exception as error:
                 self.transport.request_stop("GUI error: " + str(error))
+                self.lastStartError = str(error)
                 if not self.cleaned_up:
                     self.status.text = str(error)
-            if not self.cleaned_up:
-                self.startButton.enabled = not self.transport.running
-                self.stopButton.enabled = self.transport.running and not self.transport.stopping
-                for control in (self.target, self.separateVolumes, self.fit, self.modelScale, self.resetScale,
-                                self.renderScale, self.slicePreviews, self.sliceFps):
-                    control.enabled = not self.transport.running
-        if self.cleaned_up and (not self.transport or not self.transport.running):
+        self.update_controls()
+        if self.cleaned_up and (not self.transport or not self.transport.running) and (not self.connection or not self.connection.running):
             self.timer.stop()
             self.timer.disconnect("timeout()", self.tick)
             self.timer.deleteLater()
@@ -268,6 +397,8 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
         self.cleaned_up = True
         if self.transport:
             self.transport.request_stop("Module cleanup or application exit")
+        if self.connection:
+            self.connection.request_stop()
         slicer.mrmlScene.RemoveObserver(self.scene_observer)
         if self.layout_manager:
             self.layout_manager.disconnect("layoutChanged(int)", self.layout_changed)

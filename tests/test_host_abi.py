@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "integrations" / "slicer"))
-from qarvtk_host_runtime import Placement, Volume, Frame, PRESENCE_SDKS, HUB_SDKS
+from qarvtk_host_runtime import Placement, Volume, Frame, EXPECTED_SDK, PRESENCE_SDKS, HUB_SDKS, APP_TAG
 
 dll = c.CDLL(sys.argv[1])
 dll.qarvtk_host_info.restype = c.c_char_p
@@ -13,6 +13,10 @@ info = json.loads(dll.qarvtk_host_info())
 assert info == dict(host_abi=5, modern_api=0, panel_probe=0, panel_size_on_start=1, panel_image_region=1,
     target_discovery=3 if sys.argv[2] in PRESENCE_SDKS else 2, runtime_handle_only=1,
     multi_target=int(sys.argv[2] in HUB_SDKS),
+    device_selection=int(sys.argv[2] == EXPECTED_SDK),
+    persistent_connection=int(sys.argv[2] == EXPECTED_SDK),
+    stable_app_tag=APP_TAG if sys.argv[2] == EXPECTED_SDK else "",
+    max_selected_targets=8 if sys.argv[2] == EXPECTED_SDK else 2,
     header_sha256=sys.argv[2],
     eye_size=104, frame_size=240, placement_size=112, volume_size=120)
 assert c.sizeof(Placement) == 112

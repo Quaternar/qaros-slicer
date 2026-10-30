@@ -9,12 +9,13 @@ qarvtk_output="${QARVTK_HOST_BUILD_DIR:-build-host-cross}"
 qarvtk_hash="$(sha256sum "$qarvtk_sdk/include/qar_streaming.h" | cut -d' ' -f1)"
 qarvtk_onboarding=0
 qarvtk_presence=0
+qarvtk_devices=0
 case "$qarvtk_hash" in
   022c40b670f87a066664c37daeb06da525db37fffdf5810e72cff8a5b81e677d) qarvtk_split=0 ;;
   c709c479cc6a1acc0040fb61a071cc7bc16e65bf5acb90d624d9d6b0a6fcd3c1) qarvtk_split=1 ;;
   a32cecd4137dd3b28e0d5e0c1642a066cbea976f81b90f1f31fbac4d0fba8d4a) qarvtk_split=1; qarvtk_onboarding=1 ;;
   55e6e3f48d940ca29331f0528fe475c1b7230fb19a59c31d5525c6e90b097f6c) qarvtk_split=1; qarvtk_onboarding=1; qarvtk_presence=1 ;;
-  f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52) qarvtk_split=1; qarvtk_onboarding=1; qarvtk_presence=1 ;;
+  f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52) qarvtk_split=1; qarvtk_onboarding=1; qarvtk_presence=1; qarvtk_devices=1 ;;
   *) echo "Unsupported SDK header: $qarvtk_hash" >&2; exit 1 ;;
 esac
 mkdir -p "$qarvtk_output"
@@ -25,6 +26,7 @@ mkdir -p "$qarvtk_output"
   "-DQARVTK_SPLIT_OPENGL_PARAMS=$qarvtk_split" \
   "-DQARVTK_HOST_ONBOARDING_API=$qarvtk_onboarding" \
   "-DQARVTK_HOST_PEER_PRESENCE=$qarvtk_presence" \
+  "-DQARVTK_HOST_DEVICE_SELECTION=$qarvtk_devices" \
   src/host_bridge.cpp src/host_panels.cpp src/host_gl.cpp src/gl_copy.cpp \
   src/gl_composite.cpp src/layout.cpp src/math.cpp src/shutdown.cpp \
   -o "$qarvtk_output/qarvtk-host.dll" -lopengl32 -lgdi32 -luser32 -Wl,--no-insert-timestamp

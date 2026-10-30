@@ -2,6 +2,7 @@
 #define __declspec(annotation)
 #endif
 #include "../apps/host_hub.hpp"
+#include "../apps/host_device_selection.hpp"
 #undef NDEBUG
 #include <cassert>
 #include <iostream>
@@ -90,5 +91,22 @@ int main() {
   assert(key != host_resource_name(other.id, "volume", 0));
   assert(key != host_resource_name(viewer.id, "panel", 0));
   for (unsigned char c : key) assert(c < 128);
+  // Exact identities allow several same-category headsets. Never substitute
+  // another peer when the checked receiver is absent or disconnected.
+  const auto ids=host_peer_id_text(headset.id)+","+host_peer_id_text(replacement.id);
+  const auto chosen=selected_host_targets({headset,replacement,viewer},ids);
+  assert(chosen.size()==2&&chosen[0].id.data[0]==5&&chosen[1].id.data[0]==6);
+  assert(std::string(host_app_tag)=="slicer.qaros.quaternar");
+  for(const auto& bad:{std::string(),std::string("invalid"),ids+",",host_peer_id_text(headset.id)+","+host_peer_id_text(headset.id),host_peer_id_text(control.id)}){
+    bool rejected=false;try{selected_host_targets({headset,replacement,viewer,control},bad);}
+    catch(const std::exception&){rejected=true;}assert(rejected);
+  }
+  bool missing=false;try{selected_host_targets({replacement,viewer},host_peer_id_text(headset.id));}
+  catch(const std::exception&){missing=true;}assert(missing);
+#if QARVTK_HOST_PEER_PRESENCE
+  auto disconnected=headset;disconnected.presence=QAR_PEER_PRESENCE_OFFLINE;
+  missing=false;try{selected_host_targets({disconnected,replacement},host_peer_id_text(headset.id));}
+  catch(const std::exception&){missing=true;}assert(missing);
+#endif
   std::cout << "PASS: reachable target discovery; terminal peers excluded; snapshot/update races; category filtering; ambiguity; isolated volume/panel identities\n";
 }

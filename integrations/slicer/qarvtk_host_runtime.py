@@ -23,6 +23,105 @@ SUPPORTED_SDKS = HUB_SDKS | {SESSION_2540_SDK, LEGACY_SDK}
 DEFAULT_SDK_ROOT = str(Path(os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or
                             "C:/Program Files") / "Quaternar" / "QAROS")
 _libraries = {}  # Never unload a DLL while an SDK callback may still use it.
+APP_TAG = "slicer.qaros.quaternar"
+MAX_SELECTED_TARGETS = 8
+
+
+class DeviceSelection:
+    """Remember explicit receiver ids; never substitute another same-type peer."""
+    def __init__(self, saved=()):
+        self.checked = {key for key in saved if self.valid_id(key)}
+        self.peers = []
+
+    @staticmethod
+    def valid_id(key):
+        return isinstance(key, str) and len(key) == 32 and all(ch in "0123456789abcdef" for ch in key)
+
+    def update(self, snapshot):
+        peers = {}
+        for peer in snapshot.get("peers", []):
+            key = peer.get("id")
+            if not self.valid_id(key) or peer.get("category") not in ("headset", "visualizer"):
+                continue
+            row = dict(peer)
+            row["available"] = bool(snapshot.get("connected") and peer.get("available"))
+            peers[key] = row
+        # Keep selected disconnected rows visible, without redirecting their
+        # check mark to a replacement receiver with the same display name.
+        for old in self.peers:
+            if old["id"] not in peers and old["id"] in self.checked:
+                peers[old["id"]] = dict(old, available=False, presence="Offline")
+        self.peers = sorted(peers.values(), key=lambda p: (p["category"], p.get("name", "").casefold(), p["id"]))
+
+    def select(self, key, checked):
+        if checked:
+            if not any(p["id"] == key and p["available"] for p in self.peers):
+                raise ValueError("Select a connected receiver")
+            if key not in self.checked and len(self.selected_ids()) >= MAX_SELECTED_TARGETS:
+                raise ValueError("Select at most eight receivers")
+            self.checked.add(key)
+        else:
+            self.checked.discard(key)
+
+    def selected_ids(self):
+        return [p["id"] for p in self.peers if p["available"] and p["id"] in self.checked]
+
+
+class HubConnection:
+    """One asynchronous enrollment shared by discovery and every Start/Stop."""
+    def __init__(self, dll_path, sdk_root, log_folder):
+        self.sdk_root = str(Path(sdk_root).resolve())
+        digest = validate_sdk(self.sdk_root)
+        self.dll = library(dll_path)
+        validate_host_sdk(self.dll, digest)
+        info = self.dll._qarvtk_info
+        if (info.get("device_selection") != 1 or info.get("persistent_connection") != 1 or
+                info.get("stable_app_tag") != APP_TAG):
+            raise RuntimeError("Install the r8.6 bridge for connected receiver selection and a stable app tag.")
+        self.handle = c.c_void_p()
+        self.stopping = False
+        self.snapshot = dict(connected=False, status="Connecting to QAROS...", peers=[])
+        self._buffer = c.create_string_buffer(1024 * 1024)
+        error = c.create_string_buffer(2048)
+        result = self.dll.qarvtk_hub_connect(self.sdk_root.encode("utf-8"), str(log_folder).encode("utf-8"),
+                                            c.byref(self.handle), error, len(error))
+        if result != 0:
+            raise RuntimeError(error.value.decode("utf-8", "replace"))
+
+    @property
+    def running(self):
+        return bool(self.handle.value)
+
+    @property
+    def connected(self):
+        return self.running and not self.stopping and bool(self.snapshot.get("connected"))
+
+    def request_stop(self):
+        if self.running and not self.stopping:
+            self.stopping = True
+            self.snapshot["connected"] = False
+            self.dll.qarvtk_hub_stop(self.handle)
+
+    def tick(self):
+        if not self.running:
+            return self.snapshot
+        if self.stopping:
+            if self.dll.qarvtk_hub_destroy(self.handle):
+                self.handle = c.c_void_p()
+            return self.snapshot
+        result = self.dll.qarvtk_hub_poll(self.handle, self._buffer, len(self._buffer))
+        try:
+            snapshot = json.loads(self._buffer.value.decode("utf-8"))
+            if not isinstance(snapshot, dict) or not isinstance(snapshot.get("peers"), list):
+                raise ValueError("Invalid receiver list")
+            self.snapshot = snapshot
+        except (ValueError, UnicodeError) as error:
+            self.snapshot = dict(connected=False, status="Cannot read QAROS receivers: " + str(error), peers=[])
+            self.request_stop()
+            return self.snapshot
+        if result < 0 or result == 2:
+            self.request_stop()
+        return self.snapshot
 
 
 def sdk_fingerprint(root):
@@ -264,8 +363,18 @@ def library(path):
     }
     if info.get("panel_image_region") == 1:
         signatures["panel_capture_region"] = ([c.c_void_p, c.c_void_p] + [c.c_uint32]*7 + [c.c_char_p, c.c_uint32], c.c_int)
+    if info.get("device_selection") == 1:
+        signatures.update({
+            "hub_connect": ([c.c_char_p, c.c_char_p, c.POINTER(c.c_void_p), c.c_char_p, c.c_uint32], c.c_int),
+            "hub_poll": ([c.c_void_p, c.c_char_p, c.c_uint32], c.c_int),
+            "hub_stop": ([c.c_void_p], None),
+            "hub_destroy": ([c.c_void_p], c.c_int),
+            "host_create_selected": ([c.c_void_p, c.c_char_p, c.c_char_p, c.POINTER(Volume), c.c_uint32,
+                                      c.POINTER(c.c_void_p), c.c_char_p, c.c_uint32], c.c_int),
+        })
     for name, (args, result) in signatures.items():
-        function = getattr(dll, "qarvtk_host_" + name)
+        symbol = "qarvtk_" + name if name.startswith(("hub_", "host_")) else "qarvtk_host_" + name
+        function = getattr(dll, symbol)
         function.argtypes, function.restype = args, result
     dll._qarvtk_info = info
     _libraries[path] = dll
@@ -282,7 +391,7 @@ def validate_target_mode(dll, target):
 
 
 class HostTransport:
-    def __init__(self, dll_path, sdk_root, target, log_folder, host_view):
+    def __init__(self, dll_path, sdk_root, target, log_folder, host_view, connection=None, selected_peers=None):
         if os.name != "nt":
             raise RuntimeError("Live QAROS transport currently requires Windows x64")
         sdk = Path(sdk_root).resolve()
@@ -295,7 +404,19 @@ class HostTransport:
             raise ValueError("All workspaces must use the same Slicer render window")
         self.dll = library(dll_path)
         validate_host_sdk(self.dll, digest)
-        validate_target_mode(self.dll, target)
+        if connection is None:
+            validate_target_mode(self.dll, target)
+        else:
+            if not connection.connected or connection.dll is not self.dll or connection.sdk_root != str(sdk):
+                raise RuntimeError("Connect to QAROS with this SDK and bridge before starting")
+            selected_peers = list(selected_peers or [])
+            selection = DeviceSelection(selected_peers)
+            selection.update(connection.snapshot)
+            if (not selected_peers or len(selected_peers) > MAX_SELECTED_TARGETS or
+                    len(set(selected_peers)) != len(selected_peers) or
+                    set(selection.selected_ids()) != set(selected_peers)):
+                raise RuntimeError("Select at least one connected receiver (at most eight)")
+            target = "selected"
         self.handle = c.c_void_p()
         self.frame = Frame()
         self.stopping = False
@@ -312,8 +433,13 @@ class HostTransport:
             (c.c_double*3)(*host.app_position), (c.c_double*4)(*host.app_orientation), host.app_scale,
             (c.c_double*3)(*host.workspace_size), (c.c_double*3)(*host.workspace_position)),
             host.name.encode("utf-8")) for host in self.hosts))
-        result = self.dll.qarvtk_host_create_volumes(str(sdk).encode("utf-8"), target.encode("utf-8"),
-            str(self.log_folder).encode("utf-8"), volumes, len(volumes), c.byref(self.handle), error, len(error))
+        if connection is None:
+            result = self.dll.qarvtk_host_create_volumes(str(sdk).encode("utf-8"), target.encode("utf-8"),
+                str(self.log_folder).encode("utf-8"), volumes, len(volumes), c.byref(self.handle), error, len(error))
+        else:
+            result = self.dll.qarvtk_host_create_selected(connection.handle, ",".join(selected_peers).encode("ascii"),
+                str(self.log_folder).encode("utf-8"), volumes, len(volumes), c.byref(self.handle), error, len(error))
+        self.connection = connection  # Keep the shared Hub wrapper alive until native teardown completes.
         if result != 0:
             raise RuntimeError(error.value.decode("utf-8", "replace"))
         self.diagnostics = HostTimingLog(self.log_folder)

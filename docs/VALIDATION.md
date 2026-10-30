@@ -1,5 +1,45 @@
 # Validation and next work
 
+## Slicer Live r8.6: persistent app tag and explicit receivers, 2026-10-30
+
+R8.6 keeps one local-app enrollment alive across render Start/Stop and chains
+the explicit `QarOnboardLocalAppTagExt` value `slicer.qaros.quaternar`. Discovery
+and rendering share that session; the Hub worker waits for all render leases
+before SDK teardown. The GUI lists exact receiver ids with checkboxes, saves
+that selection and permits up to eight receivers, including several headsets
+of the same category. Source and panel streams use those same selected peers.
+
+Local verification:
+
+- MSVC Release build against installed QAROS dev.3184 passed; **18/18 CTest
+  suites PASS** (5.13 s). New tests cover multiple same-type receivers,
+  disconnected-device rejection, exact-id selection, connection reuse and
+  asynchronous/idempotent shutdown. Existing WGL, ABI and process tests passed.
+- Both native bridge translation units passed MSVC syntax checks against all
+  four older pinned headers with their original compile-time API branches.
+  These are compile checks, not executions of old runtimes.
+- A real Slicer 5.12.4/PythonQt test passed the checkbox UI with two identically
+  named headsets, a Visualizer, disconnection, list reordering, reconnection,
+  replacement-peer rejection and controls during Start/Stop. It used a device
+  fixture and temporary Slicer settings, with no Hub enrollment.
+- Two separate real Slicer processes enrolled through the installed Hub using
+  the fixed tag. Both reported the same source peer id and completed SDK
+  teardown. Live receiver metadata was read; no stereo stream was started.
+- An immediate full Disconnect/re-enrollment within one still-live process
+  returned a different peer id from the Hub despite the same explicit tag.
+  R8.6 Start/Stop does not take that path: it retains the original connection.
+  No claim is made that every full Disconnect/reconnect reuses a peer id.
+- Windows PowerShell 5.1 updater fixtures passed fresh install, backup,
+  rollback and SDK mismatch rejection. The installed r8.5 plugin was backed
+  up before applying r8.6. Installation and payload metadata require the new
+  connection/selection capabilities in addition to ABI 5 and the SDK hash.
+
+Current `downloads/qarvtk-live-dev3184.zip` SHA-256:
+`29b23c053b5b8aaa948b2ae050e057233b012791c4e78cb251557c2a3d6150bb`.
+The physical multi-headset stereo transfer and its performance still need
+verification on the chosen devices. These tests do not establish a fix for
+the previously reported QAROS GUI crash.
+
 ## Slicer Live r8.5: installed QAROS dev.3184 SDK, 2026-10-30
 
 The installed registry and changelog identify QAROS

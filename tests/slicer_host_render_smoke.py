@@ -37,8 +37,10 @@ def run():
     check_placement()
     assert hasattr(slicer.modules, "qaroslive"), "Packaged live module was not discovered"
     assert not hasattr(slicer.modules, "qarosvtk"), "Retired export module was discovered"
+    import QarosLive
+    QarosLive.QarosLiveWidget.autoConnect = False
     live_widget = slicer.modules.qaroslive.widgetRepresentation().self()
-    assert live_widget.startButton.enabled and not live_widget.stopButton.enabled
+    assert not live_widget.startButton.enabled and not live_widget.stopButton.enabled
     slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUp3DView)
     view = slicer.app.layoutManager().threeDWidget(0).threeDView()
     window = view.renderWindow()

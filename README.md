@@ -29,7 +29,7 @@ hostitelskou pipeline, zejména VTK GPU Composite pro CT/MR.
    z tohoto checkoutu a restartuj Slicer.
 5. Otevři **QAROS → QAROS Live Renderer**.
 
-Aktualizátor nainstaluje balíček **r8.5** pro kompletní
+Aktualizátor nainstaluje balíček **r8.6** pro kompletní
 **QAROS 0.9.0-dev.3184+2ccfb349**. Instalaci hledá v registru Windows, obvykle
 `C:\Program Files\Quaternar\QAROS`. Ověří SDK i obsah ZIPu, zazálohuje původní
 soubory a odstraní starý modul včetně exportních helperů a Python cache ze
@@ -46,8 +46,10 @@ cestu v Additional module paths. Aktualizátor neprohledává cizí složky.
 
 ### Přenos
 
-- **Stream to:** Visualizer + headset, Visualizer only nebo Headset only.
-  V QAROS spusť receiver nebo připoj brýle a povol přístup Sliceru.
+- **Stream to:** seznam konkrétních přijímačů s připojením a zaškrtávátky.
+  V QAROS spusť receivery a připoj headsety, potom zaškrtni cíle. Lze vybrat
+  více headsetů stejného typu i Visualizerů současně, celkem nejvýše osm.
+  Odpojené zařízení nelze vybrat a neblokuje jiné vybrané připojené cíle.
 - Viditelné objemy mohou mít každý vlastní pracovní prostor; vypnutím
   **Separate QAROS workspace for each volume** se přenáší společná scéna.
 - Výchozí měřítko je **1:1**. Centrovaní nemění velikost; **Model size (at Start)**
@@ -59,15 +61,17 @@ cestu v Additional module paths. Aktualizátor neprohledává cizí složky.
   Plugin předává název dat do titulku okna; Jan aktuálně hlásí nefunkční texty
   GUI oken — viz [předání](HANDOVER.md). Rohové anotace řezů se po dobu streamování skryjí
   i ve Sliceru a po Stop se obnoví. Velikost panelu lze v QAROS ručně změnit.
-- **Stop** uvolní vlastní runtime handle. Před dalším Startem počkej na dokončení.
+- **Stop** ukončí renderovací streamy a ponechá spojení s Hubem i stejný tag
+  `slicer.qaros.quaternar`. Tlačítko **Disconnect** ukončí také toto spojení.
+  Před dalším Startem počkej na dokončení Stop. Výběr přijímačů měň po Stop.
   Po výměně receiveru stream restartuj. Lukáš potvrdil chybu GUI na straně QAROS
-  a pracuje na opravě (zpráva od Jana 22. 10. 2026). R8.5 aktualizuje SDK;
+  a pracuje na opravě (zpráva od Jana 22. 10. 2026). R8.6 aktualizuje SDK;
   oprava GUI přijde z QAROS. Problémy s připojením po Stop/Start je potřeba
   ověřit zvlášť.
 
-Po aktualizaci musí modul zobrazovat **Live plugin r8.5**. Samotný Pull
+Po aktualizaci musí modul zobrazovat **Live plugin r8.6**. Samotný Pull
 neaktualizuje nainstalované soubory; spusť instalátor a restartuj Slicer.
-R8.5 podporuje SDK dev.3184 a zachovává výběr přijímačů podle jejich přítomnosti
+R8.6 podporuje SDK dev.3184 a zachovává výběr přijímačů podle jejich přítomnosti
 v session. QAROS i přehrávač v brýlích musí používat stejnou verzi; po aktualizaci
 může Hub požádat o nové schválení aplikace nebo spárování zařízení.
 [Brýle](docs/HEADSET_STREAMING.md) · [Více objemů](docs/MULTIPLE_VOLUMES.md) ·
