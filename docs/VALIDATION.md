@@ -1,5 +1,41 @@
 # Validation and next work
 
+## Slicer Live r8.5: installed QAROS dev.3184 SDK, 2026-10-30
+
+The installed registry and changelog identify QAROS
+`0.9.0-dev.3184+2ccfb349`. Its unmodified 401627-byte header is pinned as
+`hub-f3bbddfd`, SHA-256
+`f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52`.
+R8.4 rejected this fingerprint. R8.5 updates the supported SDK registry,
+native build, package and updater while retaining exact DLL/header matching.
+
+Local Windows x64 verification:
+
+- Release host bridge compiled with MSVC 19.39.33523.0 and static C++ runtime,
+  against the installed dev.3184 header. Build and temporary files stayed on D:.
+- **17/17 CTest suites PASS** (12.48 s), including peer presence against the
+  new header, WGL callbacks, Python runtime, native DLL ABI and process control.
+- The installed-SDK smoke loaded the real `qar-streaming-c.dll` and reported
+  `0.9.0-dev.3184+2ccfb349` before library initialization; it did not join the Hub.
+- Windows PowerShell 5.1 updater fixtures passed fresh install, payload hashes,
+  old-file backup, rollback after an injected failure, preservation of custom
+  files and rejection of an incompatible SDK. Python packaging tests passed.
+- The real plugin installation was updated with the tested updater. A separate
+  Slicer **5.12.4** process with `--testing --no-main-window` discovered the
+  installed `QarosLive` module, confirmed **r8.5**, validated the installed SDK
+  and loaded the installed native DLL with ABI 5. The test used temporary
+  settings and did not open a user scene.
+
+Current archive: `downloads/qarvtk-live-dev3184.zip`, SHA-256
+`0f575b0631e25f2472829ca95a06ae442d692c6ca62f518ff7839306b79658d1`.
+The archive contains plugin code and the bridge, no QAROS runtime binaries.
+The previous installed plugin was backed up under `package/live-backup-*`.
+
+No headset/Visualizer streaming, new performance measurements or verification
+of previously reported GUI faults was performed. Four older SDK branches
+remain in the compatibility matrix; they were not rebuilt locally in this run.
+This record does not claim a passing GitHub CI run for the new revision.
+
 ## Slicer Live r8.4: supplied QAROS dev.3008 SDK, 2026-10-22
 
 The user supplied the full `QAROS.zip` installation. Its changelog identifies

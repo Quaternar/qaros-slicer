@@ -1,10 +1,10 @@
-QAROS Live Renderer — r8.4 pro instalované QAROS dev.3008
+QAROS Live Renderer — r8.5 pro instalované QAROS dev.3184
 
 AKTUALIZACE
 
 1. Zastav přenos a zavři Slicer.
 2. GitHub Desktop → QAROS_VTK / main → Fetch origin → Pull origin.
-3. Spusť D:\QAROS_VTK\UPDATE-LIVE-PLUGIN.cmd. Ověří SDK a nainstaluje r8.4 včetně DLL; funguje i při první instalaci.
+3. Spusť D:\QAROS_VTK\UPDATE-LIVE-PLUGIN.cmd. Ověří SDK a nainstaluje r8.5 včetně DLL; funguje i při první instalaci.
 4. Otevři instalované QAROS a Slicer.
 5. Zvol QAROS → QAROS Live Renderer.
 
@@ -165,8 +165,8 @@ JDE O PRVNÍ TESTOVACÍ VYDÁNÍ
 Testy v oficiálním Sliceru 5.12.4 ověřují stereo obraz, CT hloubku, vlastní
 shadery, živý ROI ořez a obnovu stavu i po chybě. Windows build,
 ABI a sdílení OpenGL textur mají samostatné testy. Přenos na cílovém PC již
-fungoval v předchozí verzi včetně brýlí. R8.4 obsahuje novou DLL přeloženou
-pro SDK dev.3008, výběr přijímačů podle presence a dosavadní obrazové panely
+fungoval v předchozí verzi včetně brýlí. R8.5 obsahuje novou DLL přeloženou
+pro SDK dev.3184, výběr přijímačů podle presence a dosavadní obrazové panely
 s úhlopříčkou 14 palců. Běh nové DLL s Windows/QAROS a brýlemi je potřeba
-ověřit na cílovém PC. Po instalaci kontroluj Live plugin r8.4. QAROS a přehrávač
+ověřit na cílovém PC. Po instalaci kontroluj Live plugin r8.5. QAROS a přehrávač
 v brýlích musí mít stejnou verzi; případné nové párování potvrď v Hubu.

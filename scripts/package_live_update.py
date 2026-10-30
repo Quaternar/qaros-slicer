@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package the installed dev.3008 Live plugin and its Windows x64 bridge."""
+"""Package the installed dev.3184 Live plugin and its Windows x64 bridge."""
 import argparse
 import hashlib
 import json
@@ -8,9 +8,9 @@ import struct
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-SDK_SHA = '55e6e3f48d940ca29331f0528fe475c1b7230fb19a59c31d5525c6e90b097f6c'
-BUILD = 'installed-hub-update-r8.4'
-NATIVE_BUILD = 'installed-hub-update-r8.4'
+SDK_SHA = 'f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52'
+BUILD = 'installed-hub-update-r8.5'
+NATIVE_BUILD = 'installed-hub-update-r8.5'
 
 
 def package(dll, output, compiler):
@@ -20,7 +20,7 @@ def package(dll, output, compiler):
             struct.unpack_from('<H', native, offset + 4)[0] != 0x8664):
         raise ValueError('Expected a Windows x64 DLL')
     if ('"header_sha256":"' + SDK_SHA + '"').encode() not in native:
-        raise ValueError('DLL does not contain the exact dev.3008 SDK fingerprint')
+        raise ValueError('DLL does not contain the exact dev.3184 SDK fingerprint')
     if b'"panel_probe":0' not in native:
         raise ValueError('DLL still provides the retired panel test mode')
     if b'"panel_size_on_start":1' not in native:
@@ -42,7 +42,7 @@ def package(dll, output, compiler):
         path = 'qarvtk_host_' + name + '.py'
         payload['plugins/slicer/QarosVTKLib/' + path] = (ROOT / 'integrations/slicer' / path).read_bytes()
     payload['plugins/slicer/QarosVTKLib/qarvtk_runtime.py'] = (ROOT / 'integrations/qarvtk_runtime.py').read_bytes()
-    info = dict(sdk_version='0.9.0-dev.3008+65dc9aeb', sdk_header_sha256=SDK_SHA,
+    info = dict(sdk_version='0.9.0-dev.3184+2ccfb349', sdk_header_sha256=SDK_SHA,
                 host_abi=5, build=BUILD,
                 native_build=NATIVE_BUILD, compiler=compiler,
                 slicer_modules=['QarosLive'], retired_slicer_modules=['QarosVTK'],
@@ -59,10 +59,10 @@ def package(dll, output, compiler):
     payload['HOST_UPDATE_INFO.json'] = (json.dumps(info, indent=2) + '\n').encode()
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
-    archive_path = output / 'qarvtk-live-dev3008.zip'
+    archive_path = output / 'qarvtk-live-dev3184.zip'
     with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as archive:
         for name, data in sorted(payload.items()):
-            entry = zipfile.ZipInfo(name, (2026, 10, 22, 0, 0, 0))
+            entry = zipfile.ZipInfo(name, (2026, 10, 30, 0, 0, 0))
             entry.compress_type = zipfile.ZIP_DEFLATED
             entry.external_attr = 0o100644 << 16
             archive.writestr(entry, data)

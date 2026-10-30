@@ -1,4 +1,4 @@
-# Slicer Live r8.4: Visualizer and HoloLens
+# Slicer Live r8.5: Visualizer and HoloLens
 
 Connecting HoloLens to QAROS does not itself stream Slicer content. Slicer
 creates a rendering sender for that target peer and each app volume.
@@ -10,8 +10,8 @@ to the title. Slicer corner labels are hidden while streaming and restored on St
 
 ## Install and test
 
-1. Close Slicer. Fetch/Pull `main` with r8.4 and run `UPDATE-LIVE-PLUGIN.cmd`. See the
-   [installation guide](QAROS_DEV3008_UPDATE.md). Use matching QAROS dev.3008 and
+1. Close Slicer. Fetch/Pull `main` with r8.5 and run `UPDATE-LIVE-PLUGIN.cmd`. See the
+   [installation guide](QAROS_DEV3184_UPDATE.md). Use matching QAROS dev.3184 and
    headset players; complete a new pairing or app approval if the Hub asks.
 2. Connect HoloLens in QAROS to the same Hub session used by Slicer. For the
    first test, choose **Headset only** and do not create a Visualizer receiver.
@@ -45,7 +45,7 @@ to the title. Slicer corner labels are hidden while streaming and restored on St
 
 The log folder is displayed in the module. In `host-bridge.log`, check:
 
-- `Host build: installed-hub-update-r8.4` and `Target mode: headset` confirm
+- `Host build: installed-hub-update-r8.5` and `Target mode: headset` confirm
   the intended DLL and mode.
 - `PEER_OBSERVED` reports target/headset peers, their role, category, presence
   and eligibility. If no headset target appears, check the Hub session and
@@ -63,7 +63,7 @@ attempt is blank. Do not reset all Hub data to collect this distinction.
 ## Selection and implementation
 
 A target must advertise role `TARGET` and the requested category (`HEADSET`
-or `VISUALIZER`). On dev.3008, r8.4 accepts `Online` and `Unknown` presence;
+or `VISUALIZER`). On dev.3184, r8.5 accepts `Online` and `Unknown` presence;
 `Offline`, `Leaving` and `Retired` are excluded. Unrecognized future values
 count as `Unknown`, per the SDK contract. AppState is not used for selection.
 The legacy dev.2927 build retains its AppState fallback; it never loads
@@ -74,9 +74,9 @@ until Stop; restart streaming after replacing a receiver.
 The current official
 [Vulkan source example](https://github.com/Quaternar/qaros/blob/83d808c9e89aa4596803a260c0c8d583b5520fe7/qar-streaming-c/examples/vulkan_cube/main.cpp)
 subscribes before enumerating peers, selects targets and passes both
-`QarRenderSenderInit.peer_id` and `app_volume_id`. The supplied dev.3008 header
+`QarRenderSenderInit.peer_id` and `app_volume_id`. The supplied dev.3184 header
 also specifies presence for discovery and deprecates AppState as a readiness
-signal. R8.4 follows that contract while leaving sender negotiation responsible
+signal. R8.5 follows that contract while leaving sender negotiation responsible
 for connection. It does not establish resolution of earlier connection failures
 or include the GUI fix being developed in QAROS.
 
@@ -88,11 +88,11 @@ because the SDK treats an empty list as everyone. Panel interaction is not
 implemented. Startup waits up to two minutes if no usable sender appears.
 
 ABI 5 remains unchanged. Both headset and combined modes require metadata
-`multi_target=1` and `target_discovery=3` for dev.3008 (`2` for dev.2927);
+`multi_target=1` and `target_discovery=3` for dev.3184 (`2` for dev.2927);
 the loader also requires r7's
 `runtime_handle_only=1` cleanup. Local selection, routing, cancellation,
 physical-placement and installer tests cannot replace a Windows/NVIDIA/
 HoloLens run. On 2026-10-21 the user confirmed r8 works, including the headset.
-No measured performance comparison was supplied. R8.4 rebuilds the DLL for
+No measured performance comparison was supplied. R8.5 rebuilds the DLL for
 the new SDK and retains r8.3's panel sizing/cropping. Its behavior in Windows,
 appearance and physical size in the headset still need a user check.

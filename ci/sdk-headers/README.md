@@ -1,10 +1,17 @@
 # Exact headers used for Live bridge builds
 
+`hub-f3bbddfd/include/qar_streaming.h` is the unmodified header from the installed
+QAROS on 2026-10-30. The installation registry and changelog identify
+`0.9.0-dev.3184+2ccfb349`.
+SHA256: `f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52`.
+The current r8.5 update targets these bytes. See
+[the installed update guide](../../docs/QAROS_DEV3184_UPDATE.md).
+
 `hub-55e6e3f4/include/qar_streaming.h` is the unmodified 373637-byte header
 from `QAROS.zip`, supplied on 2026-10-22. Its accompanying changelog identifies
 `0.9.0-dev.3008+65dc9aeb`.
 SHA256: `55e6e3f48d940ca29331f0528fe475c1b7230fb19a59c31d5525c6e90b097f6c`.
-The current r8.4 Live update targets these bytes. It uses peer presence for
+The archived r8.4 Live update targets these bytes. It uses peer presence for
 target discovery and no longer loads the removed `runtime_destroy` export.
 See [the installed update guide](../../docs/QAROS_DEV3008_UPDATE.md).
 
