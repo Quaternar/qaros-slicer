@@ -139,14 +139,19 @@ struct PanelStream {
     log("PANEL_CREATED name="+panel.name+" id="+id_text(id));
     panel.status("Waiting for panel receiver");
   }
-  void add_peers(const std::vector<QarPeerId>& peers){
-    std::vector<const QarPeerId*> additions;
+  void sync_peers(const std::vector<QarPeerId>& peers){
+    if(peers.empty())throw std::invalid_argument("An empty panel audience must be closed");
+    std::vector<const QarPeerId*> additions,removals;
     for(const auto& peer:peers)
       if(std::none_of(audience.begin(),audience.end(),[&](const auto& p){return qar_peer_id_equals(&p,&peer);}))
         additions.push_back(&peer);
-    if(additions.empty())return;
-    checked(qar_gui_panels_update_visible_to(session,&id,additions.data(),additions.size(),nullptr,0),"add panel targets");
-    for(const auto* peer:additions){audience.push_back(*peer);log("PANEL_TARGET_ADDED name="+panel.name+" peer="+id_text(*peer));}
+    for(const auto& peer:audience)
+      if(std::none_of(peers.begin(),peers.end(),[&](const auto& p){return qar_peer_id_equals(&p,&peer);}))removals.push_back(&peer);
+    if(additions.empty()&&removals.empty())return;
+    checked(qar_gui_panels_update_visible_to(session,&id,additions.data(),additions.size(),removals.data(),removals.size()),"update panel targets");
+    for(const auto* peer:additions)log("PANEL_TARGET_ADDED name="+panel.name+" peer="+id_text(*peer));
+    for(const auto* peer:removals)log("PANEL_TARGET_REMOVED name="+panel.name+" peer="+id_text(*peer));
+    audience=peers;
     last_generation=0; // Send a static slice again for the new receiver.
   }
   void tick(){
@@ -208,11 +213,15 @@ struct HostPanels::Impl {
         std::vector<QarPeerId> audience;
         {std::lock_guard<std::mutex> lock(list_mutex);for(auto& p:panels)snapshot.push_back(p.get());audience=peers;}
         streams.resize(snapshot.size());
+        if(audience.empty()){
+          for(auto& stream:streams)stream.reset();
+          std::this_thread::sleep_for(std::chrono::milliseconds(5));continue;
+        }
         for(size_t i=0;i<snapshot.size()&&!stopping;++i){
           auto& p=*snapshot[i];
           if(p.closed||p.failed){streams[i].reset();continue;}
           try{
-            if(streams[i])streams[i]->add_peers(audience);
+            if(streams[i])streams[i]->sync_peers(audience);
             if(!p.generation||!p.visible){if(streams[i])streams[i]->tick();continue;}
             if(!streams[i]){
               auto next=std::make_unique<PanelStream>(p,session,log);
@@ -275,5 +284,8 @@ void HostPanels::add_peers(const std::vector<QarPeerId>& peers){
       impl_->peers.push_back(peer);
 }
 void HostPanels::request_stop(){impl_->stopping=true;}
+void HostPanels::set_peers(const std::vector<QarPeerId>& peers){
+  std::lock_guard<std::mutex> lock(impl_->list_mutex);impl_->peers=peers;
+}
 void HostPanels::join(){if(impl_->worker.joinable())impl_->worker.join();}
 }

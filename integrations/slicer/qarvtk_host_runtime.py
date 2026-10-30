@@ -3,6 +3,8 @@ import ctypes as c
 import hashlib
 import json
 import os
+import threading
+import urllib.request
 from pathlib import Path
 from time import perf_counter
 from datetime import datetime, timezone
@@ -66,6 +68,96 @@ class DeviceSelection:
     def selected_ids(self):
         return [p["id"] for p in self.peers if p["available"] and p["id"] in self.checked]
 
+    def requested_ids(self, current=()):
+        """Keep an already requested offline peer, without adding absent peers."""
+        return [p["id"] for p in self.peers if p["id"] in self.checked and
+                (p["available"] or p["id"] in current)]
+
+
+class VisualizerMcp:
+    """Supported loopback Visualizer API; no proxy and no mutation retries."""
+    def __init__(self, settings_path=None):
+        path = settings_path or (Path(os.environ.get("LOCALAPPDATA", "")) / "Quaternar/Qaros/streaming-viz/visualizer-settings.json")
+        try:
+            settings = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+        except FileNotFoundError:
+            settings = {}
+        if settings.get("webAppSourceMcpEnabled") is False:
+            raise RuntimeError("In QAROS Visualizer, open Settings > General and enable the MCP endpoint, then try again.")
+        port = settings.get("webAppSourceMcpPort", 17872)
+        if type(port) is not int or not 1 <= port <= 65535:
+            raise RuntimeError("Invalid Visualizer MCP port in local settings")
+        self.url = "http://127.0.0.1:" + str(port) + "/mcp"
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        self.headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+        self.request("initialize", dict(protocolVersion="2024-11-05", capabilities={},
+                     clientInfo=dict(name="qaros-slicer", version="r8.7")), 1)
+        self.request("notifications/initialized", None, None)
+
+    def request(self, method, params, request_id):
+        payload = dict(jsonrpc="2.0", method=method)
+        if request_id is not None: payload["id"] = request_id
+        if params is not None: payload["params"] = params
+        request = urllib.request.Request(self.url, json.dumps(payload).encode("utf-8"), self.headers, method="POST")
+        with self.opener.open(request, timeout=5) as response:
+            session = response.headers.get("Mcp-Session-Id")
+            if session: self.headers["Mcp-Session-Id"] = session
+            if request_id is None: return None
+            data = response.read(1024 * 1024 + 1)
+            if len(data) > 1024 * 1024: raise RuntimeError("Visualizer response is too large")
+        raw = data.decode("utf-8")
+        try:
+            message = json.loads(raw)
+        except ValueError:
+            messages = [json.loads(line[5:].strip()) for line in raw.splitlines() if line.startswith("data:")]
+            message = next((m for m in messages if m.get("id") == request_id), {})
+        if not isinstance(message, dict) or message.get("id") != request_id:
+            raise RuntimeError("Invalid Visualizer MCP response")
+        if "error" in message:
+            raise RuntimeError("Visualizer: " + str(message["error"].get("message", "request failed")))
+        result = message.get("result", {})
+        if not isinstance(result, dict) or result.get("isError"):
+            details = "; ".join(item.get("text", "") for item in result.get("content", []) if isinstance(item, dict)) if isinstance(result, dict) else "invalid result"
+            raise RuntimeError("Visualizer: " + details)
+        structured = result.get("structuredContent", {})
+        if isinstance(structured, dict) and structured.get("ok") is False:
+            raise RuntimeError("Visualizer: " + str(structured.get("error", "request failed")))
+        return result
+
+    def call(self, name, arguments):
+        return self.request("tools/call", dict(name=name, arguments=arguments), 2)
+
+
+class VisualizerReceiverCreator:
+    """Create exactly once in a worker, leaving the GUI/render pump free."""
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.running = False
+        self._result = None
+
+    def start(self):
+        with self._lock:
+            if self.running: return False
+            self.running, self._result = True, None
+        threading.Thread(target=self._create, daemon=True, name="Slicer receiver creation").start()
+        return True
+
+    def _create(self):
+        try:
+            VisualizerMcp().call("viz_receiver_add", {"start": True})
+            result = (True, "Receiver created and started. Check it in Stream to when it appears.")
+        except Exception as error:
+            # Do not retry a timed-out add: the receiver may already exist.
+            result = (False, "Cannot confirm receiver creation: " + str(error) +
+                      ". Check QAROS Visualizer before trying again. It must be running with its MCP endpoint enabled (Settings > General).")
+        with self._lock:
+            self._result, self.running = result, False
+
+    def poll(self):
+        with self._lock:
+            result, self._result = self._result, None
+            return result
+
 
 class HubConnection:
     """One asynchronous enrollment shared by discovery and every Start/Stop."""
@@ -76,8 +168,8 @@ class HubConnection:
         validate_host_sdk(self.dll, digest)
         info = self.dll._qarvtk_info
         if (info.get("device_selection") != 1 or info.get("persistent_connection") != 1 or
-                info.get("stable_app_tag") != APP_TAG):
-            raise RuntimeError("Install the r8.6 bridge for connected receiver selection and a stable app tag.")
+                info.get("stable_app_tag") != APP_TAG or info.get("live_selection") != 1):
+            raise RuntimeError("Install the r8.7 bridge for live receiver selection and a stable app tag.")
         self.handle = c.c_void_p()
         self.stopping = False
         self.snapshot = dict(connected=False, status="Connecting to QAROS...", peers=[])
@@ -372,6 +464,8 @@ def library(path):
             "host_create_selected": ([c.c_void_p, c.c_char_p, c.c_char_p, c.POINTER(Volume), c.c_uint32,
                                       c.POINTER(c.c_void_p), c.c_char_p, c.c_uint32], c.c_int),
         })
+    if info.get("live_selection") == 1:
+        signatures["host_set_receivers"] = ([c.c_void_p, c.c_char_p, c.c_char_p, c.c_uint32], c.c_int)
     for name, (args, result) in signatures.items():
         symbol = "qarvtk_" + name if name.startswith(("hub_", "host_")) else "qarvtk_host_" + name
         function = getattr(dll, symbol)
@@ -440,6 +534,7 @@ class HostTransport:
             result = self.dll.qarvtk_host_create_selected(connection.handle, ",".join(selected_peers).encode("ascii"),
                 str(self.log_folder).encode("utf-8"), volumes, len(volumes), c.byref(self.handle), error, len(error))
         self.connection = connection  # Keep the shared Hub wrapper alive until native teardown completes.
+        self.receiver_ids = list(selected_peers or [])
         if result != 0:
             raise RuntimeError(error.value.decode("utf-8", "replace"))
         self.diagnostics = HostTimingLog(self.log_folder)
@@ -474,6 +569,24 @@ class HostTransport:
             if self.stopping:
                 return "Stopping (" + self.stop_reason + "). " + self.last_status
         return self.last_status
+
+    def set_receivers(self, peers):
+        if (not self.running or self.stopping or self._ticking or not self.connection or
+                not self.connection.connected or self.dll._qarvtk_info.get("live_selection") != 1):
+            raise RuntimeError("Receiver selection is busy or disconnected; try again")
+        peers = list(peers)
+        available = {p["id"] for p in self.connection.snapshot.get("peers", []) if p.get("available")}
+        if (len(peers) > MAX_SELECTED_TARGETS or len(set(peers)) != len(peers) or
+                any(not DeviceSelection.valid_id(key) or
+                    (key not in self.receiver_ids and key not in available) for key in peers)):
+            raise RuntimeError("Choose at most eight connected receivers")
+        self.host.window.MakeCurrent()
+        error = c.create_string_buffer(2048)
+        result = self.dll.qarvtk_host_set_receivers(self.handle, ",".join(peers).encode("ascii"), error, len(error))
+        if result != 0:
+            raise RuntimeError(error.value.decode("utf-8", "replace"))
+        self.receiver_ids = peers
+        self.diagnostics.event("RECEIVERS " + json.dumps(peers))
 
     def _check(self, result):
         if result != 0:

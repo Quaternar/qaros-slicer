@@ -3,11 +3,13 @@ import ctypes as c
 import json
 from pathlib import Path
 import sys
+import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'integrations/slicer'))
-from qarvtk_host_runtime import (APP_TAG, EXPECTED_SDK, DeviceSelection, HubConnection, HostTransport)
+from qarvtk_host_runtime import (APP_TAG, EXPECTED_SDK, DeviceSelection, HubConnection, HostTransport,
+                                 VisualizerMcp, VisualizerReceiverCreator)
 
 
 def peer(number, category='headset', available=True, name='QAROS Player'):
@@ -18,9 +20,10 @@ def peer(number, category='headset', available=True, name='QAROS Player'):
 class FakeHubDll:
     def __init__(self):
         self._qarvtk_info = dict(header_sha256=EXPECTED_SDK, device_selection=1,
-                                persistent_connection=1, stable_app_tag=APP_TAG)
+                                persistent_connection=1, live_selection=1, stable_app_tag=APP_TAG)
         self.connects = self.stops = self.destroys = self.stream_stops = 0
         self.result = 1
+        self.receiver_updates = []
         self.snapshot = dict(connected=True, status='Connected', app_tag=APP_TAG,
                              source_peer='f' * 32, peers=[peer(1), peer(2)])
 
@@ -42,6 +45,11 @@ class FakeHubDll:
 
     def qarvtk_host_stop(self, handle):
         self.stream_stops += 1
+
+    def qarvtk_host_set_receivers(self, handle, ids, error, size):
+        self.receiver_updates.append(ids.decode())
+        if self.result < 0: error.value = b'WGL creation failed'
+        return min(self.result, 0)
 
 
 class DeviceTests(unittest.TestCase):
@@ -148,9 +156,98 @@ class DeviceTests(unittest.TestCase):
     def test_old_bridge_is_rejected_before_enrollment(self):
         dll = FakeHubDll()
         dll._qarvtk_info['persistent_connection'] = 0
-        with self.assertRaisesRegex(RuntimeError, 'r8.6'):
+        with self.assertRaisesRegex(RuntimeError, 'r8.7'):
             self.connection(dll)
         self.assertEqual(dll.connects, 0)
+
+    def test_hot_add_remove_and_idle_keep_enrollment_and_stream(self):
+        dll = FakeHubDll()
+        hub = self.connection(dll); hub.tick()
+        stream = object.__new__(HostTransport)
+        stream.handle, stream.dll, stream.connection = c.c_void_p(99), dll, hub
+        stream.stopping = stream._ticking = False
+        stream.receiver_ids = [peer(1)['id']]
+        stream.host, stream.diagnostics = MagicMock(), MagicMock()
+        # Existing offline receiver stays requested while another is added.
+        dll.snapshot['peers'][0]['available'] = False
+        hub.tick()
+        stream.set_receivers([peer(1)['id'], peer(2)['id']])
+        stream.set_receivers([peer(2)['id']])
+        stream.set_receivers([])
+        stream.set_receivers([peer(2)['id']])
+        self.assertEqual(len(dll.receiver_updates), 4)
+        self.assertEqual(dll.receiver_updates[2], '')
+        self.assertEqual((dll.connects, dll.stops, dll.stream_stops), (1, 0, 0))
+        with self.assertRaisesRegex(RuntimeError, 'connected'):
+            stream.set_receivers([peer(1)['id']])
+        dll.result = -1
+        with self.assertRaisesRegex(RuntimeError, 'WGL creation'):
+            stream.set_receivers([])
+        self.assertEqual(stream.receiver_ids, [peer(2)['id']])
+
+    def test_new_selection_keeps_requested_offline_peer_only(self):
+        selection = DeviceSelection([peer(1)['id'], peer(2)['id'], peer(3)['id']])
+        selection.update(dict(connected=True, peers=[peer(1, available=False), peer(2), peer(3, available=False)]))
+        self.assertEqual(selection.requested_ids([peer(1)['id']]), [peer(1)['id'], peer(2)['id']])
+
+
+class ReceiverCreationTests(unittest.TestCase):
+    def test_local_api_uses_one_add_with_start_and_session_header(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            settings = Path(folder) / 'settings.json'
+            settings.write_text(json.dumps(dict(webAppSourceMcpEnabled=True, webAppSourceMcpPort=17872)))
+            opener = MagicMock()
+            responses = []
+            for raw in (json.dumps(dict(jsonrpc='2.0', id=1, result={})), '',
+                        'data: ' + json.dumps(dict(jsonrpc='2.0', id=2, result=dict(content=[]))) + '\n\n'):
+                response = MagicMock()
+                response.headers = {'Mcp-Session-Id': 'local-session'}
+                response.read.return_value = raw.encode()
+                response.__enter__.return_value = response
+                responses.append(response)
+            opener.open.side_effect = responses
+            with patch('qarvtk_host_runtime.urllib.request.build_opener', return_value=opener):
+                client = VisualizerMcp(settings)
+                client.call('viz_receiver_add', {'start': True})
+            requests = [entry.args[0] for entry in opener.open.call_args_list]
+            self.assertTrue(all(r.full_url == 'http://127.0.0.1:17872/mcp' for r in requests))
+            self.assertEqual(json.loads(requests[-1].data)['params'],
+                             dict(name='viz_receiver_add', arguments={'start': True}))
+            self.assertEqual(requests[-1].get_header('Mcp-session-id'), 'local-session')
+
+    def test_disabled_endpoint_is_respected(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'settings.json'
+            path.write_text('{"webAppSourceMcpEnabled":false}')
+            with patch('qarvtk_host_runtime.urllib.request.build_opener') as opener:
+                with self.assertRaisesRegex(RuntimeError, 'Settings > General'):
+                    VisualizerMcp(path)
+                opener.assert_not_called()
+
+    def test_creation_is_nonblocking_and_timeout_is_not_retried(self):
+        entered, release = threading.Event(), threading.Event()
+        def blocked(*args):
+            entered.set()
+            if not release.wait(2): raise RuntimeError('test deadline')
+            raise TimeoutError('response lost')
+        creator = VisualizerReceiverCreator()
+        with patch('qarvtk_host_runtime.VisualizerMcp') as client:
+            client.return_value.call.side_effect = blocked
+            self.assertTrue(creator.start())
+            self.assertTrue(entered.wait(2))
+            self.assertFalse(creator.start())
+            self.assertIsNone(creator.poll())
+            release.set()
+            # Completion event without relying on timing of a tiny loop.
+            for thread in threading.enumerate():
+                if thread.name == 'Slicer receiver creation': thread.join(3)
+            result = creator.poll()
+            self.assertFalse(result[0])
+            self.assertIn('Check QAROS Visualizer', result[1])
+            self.assertEqual(client.return_value.call.call_count, 1)
+            self.assertIsNone(creator.poll())
 
 
 if __name__ == '__main__':

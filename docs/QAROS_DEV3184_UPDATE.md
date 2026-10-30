@@ -1,4 +1,4 @@
-# Slicer Live r8.6 with QAROS dev.3184
+# Slicer Live r8.7 with QAROS dev.3184
 
 This update targets the complete installed **QAROS 0.9.0-dev.3184+2ccfb349**
 on Windows x64, inspected on 2026-10-30. The registry and installed changelog
@@ -10,7 +10,7 @@ report this version. The exact header is pinned in
 
 1. Stop streaming and close Slicer completely.
 2. Update the checkout and run `UPDATE-LIVE-PLUGIN.cmd`.
-3. Open Slicer and check **Live plugin r8.6** in QAROS Live Renderer.
+3. Open Slicer and check **Live plugin r8.7** in QAROS Live Renderer.
 4. Keep QAROS and headset players on the same version. This QAROS release
    changes app approvals and headset pairing; complete the Hub's prompts
    if requested. The plugin does not delete or replace QAROS identities.
@@ -20,7 +20,7 @@ report this version. The exact header is pinned in
    receivers. Offline receivers are disabled; a connected Visualizer can be
    used without a headset. Existing Additional module paths remain valid.
 
-## Persistent connection and explicit selection in r8.6
+## Persistent connection and live selection in r8.7
 
 Opening the module connects to the Hub once, with the explicit application tag
 `slicer.qaros.quaternar`. The tag does not contain a date, PID, random id or
@@ -31,9 +31,22 @@ Old entries already present in QAROS are not deleted by this update.
 The receiver list refreshes from the SDK subscription. Check marks are saved
 by peer id, not by row position or display name. A replacement receiver is
 never selected automatically because it has the same name or category.
-Changing the selected targets requires Stop. A disconnected target that was
+Change the checkboxes while streaming to add or remove targets; existing
+senders retain their routes and graphics contexts. Negotiation and retirement
+run on workers. Unchecking all keeps the source idle until another receiver
+is checked. An empty selection closes the SDK slice panels instead of passing
+an empty audience (which the SDK would interpret as everyone).
+A disconnected target that was
 part of a running stream keeps its own SDK reconnect path; other selected
 receivers are not replaced or redirected.
+
+**New Visualizer receiver** creates and starts a receiver through Visualizer's
+supported loopback MCP endpoint, even with no available receiver and during
+streaming. It does not automatically select the new receiver. Visualizer must
+be running and Settings > General > Enable MCP endpoint must be enabled. The
+plugin respects that setting and reads its configured local port (default
+17872). Creation runs off the GUI thread and is never retried automatically:
+after a timeout, check the Visualizer list before creating another receiver.
 
 Each selected receiver has its own stereo sender and shared WGL context per
 source volume. The renderer still leases at most one frame at a time across

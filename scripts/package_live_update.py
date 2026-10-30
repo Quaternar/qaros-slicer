@@ -9,8 +9,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SDK_SHA = 'f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52'
-BUILD = 'installed-hub-update-r8.6'
-NATIVE_BUILD = 'installed-hub-update-r8.6'
+BUILD = 'installed-hub-update-r8.7'
+NATIVE_BUILD = 'installed-hub-update-r8.7'
 
 
 def package(dll, output, compiler):
@@ -33,7 +33,7 @@ def package(dll, output, compiler):
         raise ValueError('DLL does not provide Visualizer + headset streaming')
     if b'"runtime_handle_only":1' not in native:
         raise ValueError('DLL does not provide runtime handle-only cleanup')
-    for capability in (b'"device_selection":1', b'"persistent_connection":1',
+    for capability in (b'"device_selection":1', b'"persistent_connection":1', b'"live_selection":1',
                        b'"stable_app_tag":"slicer.qaros.quaternar"', b'"max_selected_targets":8'):
         if capability not in native:
             raise ValueError('DLL lacks persistent connected-receiver selection')
@@ -55,12 +55,14 @@ def package(dll, output, compiler):
                 slice_panel_diagonal_inches=14.0,
                 orientation_mode='fixed_ras', panel_size_on_start=1, panel_image_region=1,
                 multi_target=1, default_target_mode='selected',
-                device_selection=1, persistent_connection=1,
+                device_selection=1, persistent_connection=1, live_selection=1,
+                receiver_creation='visualizer_mcp',
                 stable_app_tag='slicer.qaros.quaternar', max_selected_targets=8,
                 max_visualizer_targets=8, max_headset_targets=8,
                 runtime_teardown='handle_only',
                 panel_registration_snapshot='none',
-                runtime_included=False, live_gpu_tested=False,
+                runtime_included=False, live_gpu_tested=True,
+                live_gpu_test_scope='two_visualizers_hot_selection', live_headset_tested=False,
                 files={name: hashlib.sha256(data).hexdigest() for name, data in payload.items()})
     payload['HOST_UPDATE_INFO.json'] = (json.dumps(info, indent=2) + '\n').encode()
     output = Path(output)

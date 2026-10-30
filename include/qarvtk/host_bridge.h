@@ -50,6 +50,9 @@ QARVTK_HOST_API int qarvtk_hub_destroy(QarvtkHub*);
 /* Comma-separated exact receiver ids from hub_poll. No category fallback. */
 QARVTK_HOST_API int qarvtk_host_create_selected(QarvtkHub*,const char* peer_ids,const char* log_folder,
     const QarvtkHostVolume*,uint32_t count,QarvtkHost** result,char* error,uint32_t error_size);
+/* Live desired audience; empty pauses all receivers without closing the Hub
+   or source views. Existing peers may be kept while temporarily offline. */
+QARVTK_HOST_API int qarvtk_host_set_receivers(QarvtkHost*,const char* peer_ids,char* error,uint32_t error_size);
 QARVTK_HOST_API int qarvtk_host_create(const char* sdk_root,const char* target,const char* log_folder,
                                      const QarvtkHostPlacement*,QarvtkHost** result,char* error,uint32_t error_size);
 /* One session, one independently movable app volume per entry.

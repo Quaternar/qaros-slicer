@@ -15,6 +15,7 @@ assert info == dict(host_abi=5, modern_api=0, panel_probe=0, panel_size_on_start
     multi_target=int(sys.argv[2] in HUB_SDKS),
     device_selection=int(sys.argv[2] == EXPECTED_SDK),
     persistent_connection=int(sys.argv[2] == EXPECTED_SDK),
+    live_selection=int(sys.argv[2] == EXPECTED_SDK),
     stable_app_tag=APP_TAG if sys.argv[2] == EXPECTED_SDK else "",
     max_selected_targets=8 if sys.argv[2] == EXPECTED_SDK else 2,
     header_sha256=sys.argv[2],

@@ -50,7 +50,8 @@ Staré kombinované ZIPy ani náhled kostky pro tento postup nepoužívej.
 
 1. Načti scénu do Sliceru. U CT/MR zapni **Volume Rendering**, zvol **VTK GPU /
    Composite** a ověř obraz v prvním 3D pohledu. ROI a presety mohou zůstat živé.
-2. V QAROS spusť receivery Visualizeru a připoj headsety, které chceš používat.
+2. Připoj headsety nebo vytvoř receiver tlačítkem **New Visualizer receiver**.
+   QAROS Visualizer musí běžet a mít zapnuté Settings → General → Enable MCP endpoint.
 3. V QAROS Live Renderer ověř **Host bridge DLL**:
    `D:/QAROS_VTK/package/windows-start/Release/qarvtk-host.dll`
    a **QAROS SDK folder**: obvykle `C:/Program Files/Quaternar/QAROS`.
@@ -60,7 +61,8 @@ Staré kombinované ZIPy ani náhled kostky pro tento postup nepoužívej.
 5. Klikni **Start live streaming**. Případný přístup aplikace Slicer povol v Hubu.
 6. Změny scény se přenášejí živě. **Stop live streaming** uvolní renderovací
    prostředky a ponechá stejné spojení s Hubem. **Disconnect** ukončí i toto
-   spojení. Před restartem počkej na dokončení Stop; pak můžeš změnit výběr cílů.
+   spojení. Před restartem počkej na dokončení Stop. Výběr cílů lze měnit i za běhu;
+   odškrtnutí všech pozastaví přenos do dalšího zaškrtnutí.
 
 **Model size = 1×** zachovává fyzické měřítko 1:1. Centrovaní scénu pouze
 vystředí. Násobek 1/8× až 8× i nové rozměry pracovního prostoru se použijí
@@ -89,7 +91,7 @@ Jeho nový Live plugin se připravuje v [PR #4](https://github.com/HonzaHovora/Q
 
 ## Když se něco nepovede
 
-Aktuální modul ukazuje **Live plugin r8.6**; najetím na tento řádek zjistíš
+Aktuální modul ukazuje **Live plugin r8.7**; najetím na tento řádek zjistíš
 cestu skutečně načteného souboru. Po Pull vždy spusť `UPDATE-LIVE-PLUGIN.cmd`
 se zavřeným Slicerem. Nastavení 14″ je od r8.3 předané explicitně i již
 existujícímu panelu. U náhledů se skrývají rohové anotace řezů i ve Sliceru;

@@ -75,8 +75,8 @@ $info = Get-Content -LiteralPath (Join-Path $staging 'HOST_UPDATE_INFO.json') -R
 if ($info.sdk_header_sha256 -ne $expectedSdk -or $info.host_abi -ne 5) {
     throw 'Archive SDK or ABI metadata differs from this updater.'
 }
-if ($info.device_selection -ne 1 -or $info.persistent_connection -ne 1 -or $info.stable_app_tag -ne 'slicer.qaros.quaternar' -or $info.max_selected_targets -ne 8 -or $info.multi_target -ne 1 -or $info.build -ne 'installed-hub-update-r8.6' -or $info.native_build -ne 'installed-hub-update-r8.6' -or $info.runtime_teardown -ne 'handle_only' -or $info.target_discovery -ne 3 -or $info.panel_probe -ne 0 -or $info.slice_panel_diagonal_inches -ne 14 -or $info.panel_size_on_start -ne 1 -or $info.panel_image_region -ne 1 -or $info.orientation_mode -ne 'fixed_ras') {
-    throw 'This updater requires the r8.6 package with peer presence discovery and image-only 14-inch panels.'
+if ($info.live_selection -ne 1 -or $info.receiver_creation -ne 'visualizer_mcp' -or $info.device_selection -ne 1 -or $info.persistent_connection -ne 1 -or $info.stable_app_tag -ne 'slicer.qaros.quaternar' -or $info.max_selected_targets -ne 8 -or $info.multi_target -ne 1 -or $info.build -ne 'installed-hub-update-r8.7' -or $info.native_build -ne 'installed-hub-update-r8.7' -or $info.runtime_teardown -ne 'handle_only' -or $info.target_discovery -ne 3 -or $info.panel_probe -ne 0 -or $info.slice_panel_diagonal_inches -ne 14 -or $info.panel_size_on_start -ne 1 -or $info.panel_image_region -ne 1 -or $info.orientation_mode -ne 'fixed_ras') {
+    throw 'This updater requires the r8.7 package with peer presence discovery and image-only 14-inch panels.'
 }
 foreach ($relative in $files) {
     if ($relative -eq 'HOST_UPDATE_INFO.json') { continue }
@@ -153,14 +153,17 @@ try {
     }
     throw $failure
 }
-Remove-Item -LiteralPath $staging -Recurse
-Write-Host 'QAROS Live Renderer r8.6 installed for QAROS 0.9.0-dev.3184+2ccfb349 (ABI 5).'
+$resolvedStaging = [IO.Path]::GetFullPath($staging)
+$packageRoot = [IO.Path]::GetFullPath((Join-Path $RepoRoot 'package')).TrimEnd('\') + '\'
+if (-not $resolvedStaging.StartsWith($packageRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe staging cleanup path' }
+Remove-Item -LiteralPath $resolvedStaging -Recurse
+Write-Host 'QAROS Live Renderer r8.7 installed for QAROS 0.9.0-dev.3184+2ccfb349 (ABI 5).'
 Write-Host 'The retired QAROS Streaming module and its export helpers were removed from managed plugin folders.'
 Write-Host "Previous plugin saved to: $backup"
 Write-Host "Slicer Additional module paths: $(Join-Path $destination 'plugins\slicer')"
 Write-Host "Open Slicer, QAROS Live Renderer. SDK folder: $SdkRoot"
-Write-Host 'In QAROS, start the Visualizer receivers and connect the headsets you want to use.'
-Write-Host 'Check the connected receivers in Stream to; several headsets and Visualizers can stream together.'
+Write-Host 'Connect headsets or use New Visualizer receiver (Visualizer MCP endpoint must be enabled).'
+Write-Host 'Check receivers in Stream to; add/remove receivers during streaming. Uncheck all to pause delivery.'
 Write-Host 'Start live streaming in Slicer; allow Slicer in the QAROS Hub approval window if prompted.'
 Write-Host 'Slice panels start automatically. The step-by-step test mode has been removed.'
 Write-Host 'Each slice panel starts at a 14-inch diagonal, preserving aspect ratio. Resize it in QAROS as needed.'

@@ -5,6 +5,16 @@ $fixture = Join-Path ([IO.Path]::GetTempPath()) ('qarvtk-update-test-' + [Guid]:
 $sdk = Join-Path $fixture 'Program Files\Quaternar\QAROS'
 $destination = Join-Path $fixture 'package\windows-start'
 $expected = 'f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52'
+# This child-process fixture updates only its private temporary checkout.
+# Simulate a closed Slicer, even if the user's independent Slicer is open.
+function Get-Process {
+    [CmdletBinding()]
+    param([string[]]$Name)
+    if (@($Name | Where-Object { $_ -notin @('Slicer', 'SlicerApp-real') }).Count) {
+        throw 'Unexpected process query in isolated updater test'
+    }
+    return @()
+}
 try {
     foreach ($dir in @('downloads', 'package\windows-start\plugins\slicer',
                        'Program Files\Quaternar\QAROS\include', 'Program Files\Quaternar\QAROS\bin')) {
@@ -110,5 +120,8 @@ try {
 } finally {
     Remove-Variable QarUpdateTestFailurePath, QarUpdateTestFailureTriggered -Scope Global -ErrorAction SilentlyContinue
     # ctypes loaded the shipped DLL in a child Python process, which has exited.
-    if (Test-Path -LiteralPath $fixture) { Remove-Item -LiteralPath $fixture -Recurse -Force }
+    $resolvedFixture = [IO.Path]::GetFullPath($fixture)
+    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+    if (-not $resolvedFixture.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe fixture cleanup path' }
+    if (Test-Path -LiteralPath $resolvedFixture) { Remove-Item -LiteralPath $resolvedFixture -Recurse -Force }
 }

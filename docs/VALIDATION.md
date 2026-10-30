@@ -1,5 +1,51 @@
 # Validation and next work
 
+## Slicer Live r8.7: live receiver changes and creation, 2026-10-30
+
+R8.7 keeps fixed receiver/volume routes while checkboxes change during
+streaming. New WGL contexts are prepared before publication; sender setup and
+retirement run on workers. Existing sender slots remain stable. Unchecking all
+leaves the source idle; SDK GUI panels are closed while their audience is
+empty, since an empty SDK panel audience would otherwise mean everyone.
+
+Local verification:
+
+- MSVC Release build against installed dev.3184 passed. **19/19 CTest suites
+  PASS** (11.08 s), including 17 Python device/API cases. The new native test
+  checks transactional route publication, retirement reservations, rapid
+  rechecking, slot reuse and continued work while SDK teardown is blocked.
+- Both bridge translation units passed MSVC syntax checks against the four
+  older pinned SDK profiles. Their live-selection capability is zero.
+- Real Slicer 5.12.4/PythonQt controls passed hot-add/remove with multiple
+  identically named headsets, late discovery, empty pause/resume, rollback on
+  a rejected selection, and receiver creation controls during streaming and
+  with an empty list. Device metadata in this UI test is a fixture.
+- The installed Visualizer's enabled loopback MCP endpoint successfully
+  created and started a uniquely named temporary receiver. Only that test
+  slot was then removed. Python tests cover the session header, JSON/SSE
+  replies, disabled endpoint, asynchronous execution and no automatic retry
+  after an uncertain creation result.
+- An opt-in real Slicer/QAROS GPU run submitted **600 stereo frames** to two
+  temporary Visualizers. The second was created after the first began
+  streaming. At the joint checkpoint A had 317 frames and B had 43; after
+  removing A, B reached 163. Empty selection kept the serial at 480, and
+  rechecking A delivered 120 more frames. Source peer id and native host
+  handle were identical across all five checkpoints. Both test receiver slots
+  were removed afterward; existing receiver slots were left alone. This test
+  does not exercise physical headsets or slice-panel delivery. QAROS emitted
+  network warnings; one WGL make-current error 2004 appeared during final
+  application teardown after the transport worker exited.
+- Windows PowerShell 5.1 fixtures passed fresh installation, payload hashes,
+  backup, rollback and SDK mismatch rejection. R8.7 was installed in the
+  user's managed plugin folder, preserving the previous r8.6 under
+  `package/live-backup-20261030-185056-98043f94`. An isolated actual Slicer
+  process loaded the installed r8.7 module and DLL with live-selection support.
+
+Current `downloads/qarvtk-live-dev3184.zip` SHA-256:
+`529395378609d29d01e822c16fe8ea9c34e86b0bf20203546d08d5679fbe5bd4`.
+Physical multi-headset transfer and performance require verification on the
+chosen headsets. The earlier QAROS GUI crash is not claimed fixed.
+
 ## Slicer Live r8.6: persistent app tag and explicit receivers, 2026-10-30
 
 R8.6 keeps one local-app enrollment alive across render Start/Stop and chains
@@ -34,7 +80,7 @@ Local verification:
   up before applying r8.6. Installation and payload metadata require the new
   connection/selection capabilities in addition to ABI 5 and the SDK hash.
 
-Current `downloads/qarvtk-live-dev3184.zip` SHA-256:
+R8.6 `downloads/qarvtk-live-dev3184.zip` SHA-256 at that validation:
 `29b23c053b5b8aaa948b2ae050e057233b012791c4e78cb251557c2a3d6150bb`.
 The physical multi-headset stereo transfer and its performance still need
 verification on the chosen devices. These tests do not establish a fix for

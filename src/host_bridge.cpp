@@ -3,6 +3,8 @@
 #include "qarvtk/host_frame_lease.hpp"
 #include "qarvtk/host_stream_scheduler.hpp"
 #include "qarvtk/host_stream_routes.hpp"
+#include "qarvtk/host_live_selection.hpp"
+#include "qarvtk/host_target_retirement.hpp"
 #include "qarvtk/host_stream_startup.hpp"
 #include "qarvtk/host_panels.hpp"
 #include "qarvtk/host_wgl.hpp"
@@ -274,8 +276,7 @@ struct QarvtkHost {
   std::atomic<bool> stopping{false},done{false};
   QarCancelToken* operation{};
   std::vector<QarCancelToken*> connection_operations; // Protected by cancel_mutex; one per target.
-  std::vector<QarPeerId> selected_peers;
-  std::vector<std::string> selected_names;
+  std::shared_ptr<qarvtk::HostLiveSelection> live_selection;
   std::shared_ptr<HostHubState> hub;
   bool failed{};
   qarvtk::HostFrameLease lease;
@@ -329,13 +330,25 @@ struct QarvtkHost {
     if(operation)qar_cancel_token_handle_destroy(operation);
     operation=nullptr;checked(qar_cancel_token_create_with_timeout(&operation,timeout_ms),"create SDK timeout");
   }
-  std::size_t target_count()const{return selected_peers.empty()?(target=="both"?2:1):selected_peers.size();}
+  std::size_t target_count()const{return live_selection?qarvtk::HostLiveSelection::capacity:target=="both"?2:1;}
+  void prepare_target(std::size_t t){
+    gui();
+    if(wglGetCurrentContext()!=host_context)throw std::runtime_error("Make the Slicer render window current before changing receivers");
+    const auto dc=wglGetCurrentDC();
+    for(auto& volume:volumes)if(!volume.graphics[t]){
+      auto graphics=std::make_unique<qarvtk::HostSharedWgl>(dc,host_context);
+      auto callbacks=std::make_unique<qarvtk::WglCallbacks>(graphics->dc,graphics->context);
+      const auto probe=callbacks->probe_on_worker();
+      if(!probe.get_string_i||!probe.memory_import)throw std::runtime_error("Shared SDK context lacks required OpenGL interop functions");
+      volume.graphics[t]=std::move(graphics);volume.callbacks[t]=std::move(callbacks);
+    }
+  }
   void initialize(){
     gui();host_context=wglGetCurrentContext();const auto dc=wglGetCurrentDC();
     if(!host_context||!dc)throw std::runtime_error("Make the Slicer render window current before creating the host bridge");
     if(target!="visualizer"&&target!="quest"&&target!="headset"&&target!="both"&&target!="selected")
       throw std::runtime_error("Host target must be visualizer, headset or both");
-    if(target=="selected"&&(!hub||selected_peers.empty()))
+    if(target=="selected"&&(!hub||!live_selection))
       throw std::runtime_error("Explicit receiver selection requires the existing QAROS connection");
 #if !QARVTK_HOST_ONBOARDING_API
     if(target=="both")throw std::runtime_error("Visualizer + headset requires the installed QAROS Hub SDK (dev.2927)");
@@ -345,7 +358,7 @@ struct QarvtkHost {
     std::filesystem::create_directories(std::filesystem::u8path(log_folder));
     log.open(std::filesystem::u8path(log_folder)/"host-bridge.log",std::ios::app);
     if(!log)throw std::runtime_error("Cannot open host bridge log");
-    log<<"Host build: installed-hub-update-r8.6 (ABI 5); SDK header " QARVTK_HOST_SDK_HASH<<std::endl;
+    log<<"Host build: installed-hub-update-r8.7 (ABI 5); SDK header " QARVTK_HOST_SDK_HASH<<std::endl;
     log<<"SDK root: "<<sdk_root<<std::endl;
     log<<"Target mode: "<<target<<"; workspaces="<<volumes.size()<<std::endl;
     copying=std::make_unique<qarvtk::HostSharedWgl>(dc,host_context);
@@ -360,12 +373,8 @@ struct QarvtkHost {
     // that may join later. No SDK worker creates or destroys Windows windows.
     connection_operations.resize(target_count(),nullptr);
     for(auto& volume:volumes){volume.graphics.resize(target_count());volume.callbacks.resize(target_count());}
-    for(auto& volume:volumes)for(std::size_t t=0;t<target_count();++t){
-      volume.graphics[t]=std::make_unique<qarvtk::HostSharedWgl>(dc,host_context);
-      volume.callbacks[t]=std::make_unique<qarvtk::WglCallbacks>(volume.graphics[t]->dc,volume.graphics[t]->context);
-      const auto probe=volume.callbacks[t]->probe_on_worker();
-      if(!probe.get_string_i||!probe.memory_import)throw std::runtime_error("Shared SDK context lacks required OpenGL interop functions");
-    }
+    const auto wanted=live_selection?live_selection->snapshot():qarvtk::HostLiveSelection::Snapshot{};
+    for(std::size_t t=0;t<target_count();++t)if(!live_selection||wanted[t].wanted)prepare_target(t);
     panels=std::make_unique<qarvtk::HostPanels>([this](const std::string& text){note(text);});
     worker=std::thread([this]{run();});
   }
@@ -414,6 +423,8 @@ struct Session {
     QarPeerId peer=qar_peer_id_default();
     std::string name,discovery_error;
     std::unique_ptr<qarvtk::HostStreamStartup> startup;
+    std::unique_ptr<qarvtk::HostTargetRetirement> retirement;
+    Clock::time_point retry_after{};
     bool panels_added{};
   };
   QarvtkHost& host;
@@ -425,6 +436,8 @@ struct Session {
   std::vector<Stream> streams;
   std::vector<Target> targets;
   std::vector<QarPeerId> panel_peers;
+  qarvtk::HostLiveSelection::Snapshot desired{};
+  std::uint64_t selection_generation=0;
   Clock::time_point waiting_since=Clock::now();
 #if QARVTK_HOST_ONBOARDING_API
   QarPeerId source_peer=qar_peer_id_default();
@@ -439,7 +452,10 @@ struct Session {
     for(auto& target:targets)if(target.startup)target.startup->request_stop();
     {std::lock_guard<std::mutex> lock(host.cancel_mutex);
      for(auto* token:host.connection_operations)if(token)qar_cancel_token_cancel(token);}
-    for(auto& target:targets)if(target.startup)target.startup->join();
+    for(auto& target:targets){
+      if(target.retirement&&target.retirement->started())target.retirement->join();
+      else if(target.startup)target.startup->join();
+    }
     // Panel video uses this session concurrently, but never outlives it.
     if(host.panels){host.panels->request_stop();host.panels->join();}
     if(subscription)qar_cancel_token_cancel(subscription);
@@ -606,10 +622,11 @@ struct Session {
   }
 #endif
   std::string target_label(std::size_t slot)const{
-    if(!host.selected_names.empty())return host.selected_names.at(slot);
+    if(host.live_selection)return !targets[slot].name.empty()?targets[slot].name:desired[slot].name;
     return (host.target=="visualizer"||(host.target=="both"&&slot==0))?"Visualizer":"Headset";
   }
   void start(){
+    if(host.live_selection)host.live_selection->snapshot(desired,selection_generation);
 #if QARVTK_HOST_ONBOARDING_API
     discover();
     const QarPeerId* initial=nullptr; // Each sender attaches its target, as in the SDK example.
@@ -631,6 +648,50 @@ struct Session {
     host.note("TARGET_SELECTED type="+target_label(slot)+" peer="+id_text(peer)+" name="+name);
     target.startup=std::make_unique<qarvtk::HostStreamStartup>(volumes.size());
     target.startup->start([this,slot](std::size_t i){start_stream(slot,i);},[this]{return host.stopping.load();});
+  }
+  void retire_target(std::size_t slot,const std::string& reason){
+    auto& target=targets[slot];
+    if(!target.startup||target.retirement)return;
+    target.startup->request_stop();
+    {std::lock_guard<std::mutex> lock(host.cancel_mutex);
+     if(host.connection_operations[slot])qar_cancel_token_cancel(host.connection_operations[slot]);}
+    target.retirement=std::make_unique<qarvtk::HostTargetRetirement>();
+    auto* retirement=target.retirement.get();
+    const auto peer=target.peer;
+    host.note("TARGET_RETIRE peer="+id_text(peer)+" reason="+reason);
+    retirement->start([this,slot,peer]{
+      targets[slot].startup->join();
+      std::string error;
+      for(std::size_t v=0;v<volumes.size();++v){
+        auto& stream=streams[routes.index(slot,v)];
+        if(stream.sender){qar_render_stream_handle_destroy(stream.sender);stream.sender=nullptr;}
+#if QARVTK_HOST_DEVICE_SELECTION
+        const auto result=qar_app_volumes_update_used_by_peers(session,&volumes[v].id,nullptr,0,&peer,1);
+        if(!qar_result_is_success(result))error="Unable to remove receiver from workspace audience";
+#endif
+      }
+      if(!error.empty())throw std::runtime_error(error);
+    });
+  }
+  void refresh_live_selection(){
+    if(!host.live_selection)return;
+    host.live_selection->snapshot(desired,selection_generation);
+    for(std::size_t t=0;t<targets.size();++t){
+      auto& target=targets[t];
+      if(target.retirement){
+        if(!target.retirement->ready())continue;
+        target.retirement->join();
+        if(!target.retirement->error().empty())host.note(target.retirement->error());
+        const auto retired=id_text(target.peer);
+        target.retirement.reset();target.startup.reset();target.name.clear();target.discovery_error.clear();
+        for(std::size_t v=0;v<volumes.size();++v)streams[routes.index(t,v)]={};
+        host.live_selection->release_unwanted(t,retired);
+      }
+      if(!desired[t].wanted){
+        if(target.startup)retire_target(t,"receiver unchecked");
+        else host.live_selection->release_unwanted(t,desired[t].id);
+      }
+    }
   }
   void add_volume(const QarPeerId* peer,std::size_t index){
     auto& volume=volumes[index];const auto& config=host.volumes[index];
@@ -697,9 +758,10 @@ struct Session {
   }
   bool ready(std::size_t index)const{
     const auto route=routes.address(index);const auto& startup=targets[route.target].startup;
-    return startup&&startup->ready(route.volume);
+    return !targets[route.target].retirement&&(!host.live_selection||desired[route.target].wanted)&&startup&&startup->ready(route.volume);
   }
   std::size_t target_ready_count(std::size_t slot)const{
+    if(targets[slot].retirement||(host.live_selection&&!desired[slot].wanted))return 0;
     std::size_t count=0;
     if(targets[slot].startup)for(std::size_t v=0;v<volumes.size();++v)if(targets[slot].startup->ready(v))++count;
     return count;
@@ -710,7 +772,10 @@ struct Session {
   std::string progress() const {
     std::string text;
     for(std::size_t t=0;t<host.target_count();++t){
-      const auto& target=targets[t];if(t)text+=" | ";text+=target_label(t)+": ";
+      const auto& target=targets[t];
+      if(host.live_selection&&!desired[t].wanted&&!target.retirement)continue;
+      if(!text.empty())text+=" | ";text+=target_label(t)+": ";
+      if(target.retirement){text+="disconnecting";continue;}
       if(!target.startup){
         text+=target.discovery_error.empty()?"waiting for an available target in QAROS":target.discovery_error;
         continue;
@@ -721,10 +786,14 @@ struct Session {
         if(target.startup->state(v)==qarvtk::HostStreamStartup::State::failed)
           text+="; FAILED "+host.volumes[v].name+": "+target.startup->error(v).substr(0,220);
     }
-    return text;
+    return text.empty()?"Streaming is idle. Check a connected receiver to resume.":text;
   }
   void refresh(){
     bool changed=false;
+    if(host.live_selection){
+      const auto previous=selection_generation;refresh_live_selection();
+      changed=previous!=selection_generation;
+    }
 #if QARVTK_HOST_ONBOARDING_API
     const auto available=target_registry->snapshot();
     // Record discovery changes once, including why a headset is filtered out.
@@ -743,13 +812,15 @@ struct Session {
     if(inventory.empty())inventory="PEER_DISCOVERY no target peers in this Hub session\n";
     if(inventory!=peer_inventory){host.note(inventory);peer_inventory=inventory;}
     for(std::size_t t=0;t<host.target_count()&&!host.stopping;++t){
-      auto& target=targets[t];if(target.startup)continue; // Pin a selected peer until Stop; never silently switch viewers.
+      auto& target=targets[t];
+      if(target.startup||target.retirement)continue;
+      if(host.live_selection&&(!desired[t].wanted||Clock::now()<target.retry_after))continue;
       const auto category=target_label(t)=="Visualizer"?QAR_DEVICE_CATEGORY_VISUALIZER:QAR_DEVICE_CATEGORY_HEADSET;
       std::optional<qarvtk::HostTarget> selected;
       try{
-        if(host.selected_peers.empty())selected=qarvtk::select_host_target(available,category);
+        if(!host.live_selection)selected=qarvtk::select_host_target(available,category);
         else for(const auto& peer:available)
-          if(qar_peer_id_equals(&peer.id,&host.selected_peers[t])&&qarvtk::host_target_available(peer)){selected=peer;break;}
+          if(id_text(peer.id)==desired[t].id&&qarvtk::host_target_available(peer)){selected=peer;break;}
       }
       catch(const std::runtime_error& e){
         if(target.discovery_error!=e.what()){
@@ -761,7 +832,7 @@ struct Session {
       if(selected){
         start_target(t,selected->id,selected->name+(selected->device.empty()?"":" ("+selected->device+")"));changed=true;
       }else{
-        const std::string reason=!host.selected_peers.empty()?"Selected receiver is disconnected; waiting for the same receiver":target_label(t)=="Headset"?
+        const std::string reason=host.live_selection?"Selected receiver is disconnected; waiting for the same receiver":target_label(t)=="Headset"?
           "No available headset target in this QAROS session; connect the headset to the same Hub":
           "No available Visualizer receiver in this QAROS session; create a receiver in QAROS";
         if(target.discovery_error!=reason){target.discovery_error=reason;changed=true;
@@ -771,7 +842,7 @@ struct Session {
 #endif
     for(std::size_t i=0;i<streams.size();++i){
       const auto route=routes.address(i);const auto& startup=targets[route.target].startup;
-      if(!startup)continue;
+      if(!startup||targets[route.target].retirement)continue;
       const auto state=startup->state(route.volume);
       if(state==streams[i].reported)continue;
       streams[i].reported=state;changed=true;
@@ -779,7 +850,26 @@ struct Session {
         host.note("WORKSPACE_FAILED index="+std::to_string(i)+" target="+target_label(route.target)+
           " peer="+id_text(targets[route.target].peer)+" name="+host.volumes[route.volume].name+" error="+startup->error(route.volume));
     }
+    if(host.live_selection)for(std::size_t t=0;t<targets.size();++t){
+      auto& target=targets[t];
+      if(desired[t].wanted&&target.startup&&!target.retirement&&target.startup->done()&&!target_ready_count(t)){
+        target.retry_after=Clock::now()+std::chrono::seconds(2);
+        retire_target(t,"receiver setup failed; retrying");changed=true;
+      }
+    }
     if(changed)host.set_status(progress());
+    if(host.live_selection){
+      std::vector<QarPeerId> next;
+      for(std::size_t t=0;t<targets.size();++t)if(desired[t].wanted&&!targets[t].retirement&&target_ready_count(t))next.push_back(targets[t].peer);
+      const bool audience_changed=next.size()!=panel_peers.size()||!std::equal(next.begin(),next.end(),panel_peers.begin(),
+        [](const auto& a,const auto& b){return qar_peer_id_equals(&a,&b);});
+      if(audience_changed){
+        if(!panels_started&&!next.empty()){host.panels->start(session,next);panels_started=true;}
+        else if(panels_started)host.panels->set_peers(next);
+        panel_peers=std::move(next);
+      }
+      return;
+    }
     bool all_done=true;
     for(std::size_t t=0;t<host.target_count();++t){
       auto& target=targets[t];
@@ -823,7 +913,7 @@ void QarvtkHost::run() noexcept {
     while(!stopping){
       sdk.refresh();
       if(!sdk.ready_count())last=Clock::now(); // Pose deadline starts when a sender is usable.
-      else if(Clock::now()-last>std::chrono::seconds(60))throw std::runtime_error("No viewer frame/pose for 60 seconds");
+      else if(!live_selection&&Clock::now()-last>std::chrono::seconds(60))throw std::runtime_error("No viewer frame/pose for 60 seconds");
       std::unique_ptr<QarRenderFrameInfo,decltype(&qar_render_frame_info_handle_destroy)> info(nullptr,qar_render_frame_info_handle_destroy);
       const auto selected=scheduler.select(sdk.streams.size(),[&](std::size_t index){
         auto& stream=sdk.streams[index];
@@ -837,6 +927,11 @@ void QarvtkHost::run() noexcept {
         if(qar_result_has_code(result,QAR_STATUS_MEDIA_STREAMING_STREAM_IS_RECONNECTING)||
            qar_result_has_code(result,QAR_STATUS_MEDIA_STREAMING_NO_ACTIVE_TRANSFERS)){
           stream.retry_after=Clock::now()+std::chrono::milliseconds(2);info.reset();return false;
+        }
+        if(live_selection&&!qar_result_is_success(result)){
+          const auto route=sdk.routes.address(index);
+          sdk.targets[route.target].retry_after=Clock::now()+std::chrono::seconds(2);
+          info.reset();sdk.retire_target(route.target,"receiver stream needs reconnection");return false;
         }
         checked(result,"begin live frame");
         if(!ready){info.reset();return false;}
@@ -913,9 +1008,9 @@ const char* qarvtk_host_info(){
 #endif
     ",\"device_selection\":"
 #if QARVTK_HOST_DEVICE_SELECTION
-    "1,\"persistent_connection\":1,\"stable_app_tag\":\"" QARVTK_LOCAL_APP_TAG "\",\"max_selected_targets\":8"
+    "1,\"persistent_connection\":1,\"live_selection\":1,\"stable_app_tag\":\"" QARVTK_LOCAL_APP_TAG "\",\"max_selected_targets\":8"
 #else
-    "0,\"persistent_connection\":0,\"stable_app_tag\":\"\",\"max_selected_targets\":2"
+    "0,\"persistent_connection\":0,\"live_selection\":0,\"stable_app_tag\":\"\",\"max_selected_targets\":2"
 #endif
     ",\"header_sha256\":\"" QARVTK_HOST_SDK_HASH "\",\"eye_size\":104,\"frame_size\":240,\"placement_size\":112,\"volume_size\":120}";
 }
@@ -973,10 +1068,10 @@ int qarvtk_host_create_selected(QarvtkHub* connection,const char* ids,const char
     const auto selected=qarvtk::selected_host_targets(connection->state->registry->snapshot(),ids);
     auto host=std::make_unique<QarvtkHost>();connection->state->retain();host->hub=connection->state;
     host->sdk_root=host->hub->sdk_root;host->target="selected";host->log_folder=folder;
-    for(const auto& peer:selected){
-      host->selected_peers.push_back(peer.id);
-      host->selected_names.push_back(peer.name+(peer.device.empty()?"":" ("+peer.device+")"));
-    }
+    host->live_selection=std::make_shared<qarvtk::HostLiveSelection>();
+    std::vector<qarvtk::HostLiveSelection::Choice> choices;
+    for(const auto& peer:selected)choices.emplace_back(id_text(peer.id),peer.name+(peer.device.empty()?"":" ("+peer.device+")"));
+    host->live_selection->replace(choices,[](std::size_t){});
     for(uint32_t i=0;i<count;++i){
       auto probe=qar_app_volume_init_default();qarvtk::apply_host_placement(probe,volumes[i].placement);
       QarvtkHost::Volume volume;volume.placement=volumes[i].placement;
@@ -988,6 +1083,37 @@ int qarvtk_host_create_selected(QarvtkHub* connection,const char* ids,const char
    catch(...){message(error,size,"Cannot initialize selected receiver streams");active=false;return -1;}
 #else
   message(error,size,"Connected receiver selection requires the dev.3184 SDK and r8.6 bridge");return -1;
+#endif
+}
+int qarvtk_host_set_receivers(QarvtkHost* host,const char* ids,char* error,uint32_t size){
+#if QARVTK_HOST_DEVICE_SELECTION
+  try{
+    if(!host||!ids)throw std::invalid_argument("No active receiver selection");
+    host->gui();
+    if(host->stopping||!host->hub||!host->hub->ready||!host->live_selection)
+      throw std::runtime_error("The live QAROS connection is not ready");
+    const auto available=host->hub->registry->snapshot();
+    const auto reserved=host->live_selection->snapshot();
+    std::vector<qarvtk::HostLiveSelection::Choice> choices;
+    const std::string keys=ids;
+    for(std::size_t offset=0;offset<keys.size();){
+      const auto end=keys.find(',',offset);const auto key=keys.substr(offset,end==std::string::npos?end:end-offset);
+      const auto known=std::find_if(reserved.begin(),reserved.end(),[&](const auto& s){return s.id==key;});
+      const auto peer=std::find_if(available.begin(),available.end(),[&](const auto& p){return id_text(p.id)==key;});
+      if(peer!=available.end()&&qarvtk::host_target_available(*peer)&&
+         (peer->category==QAR_DEVICE_CATEGORY_HEADSET||peer->category==QAR_DEVICE_CATEGORY_VISUALIZER))
+        choices.emplace_back(key,peer->name+(peer->device.empty()?"":" ("+peer->device+")"));
+      else if(known!=reserved.end())choices.emplace_back(key,known->name);
+      else throw std::runtime_error("A new receiver must be connected before it can be selected");
+      if(end==std::string::npos)break;
+      offset=end+1;if(offset==keys.size())throw std::invalid_argument("Invalid receiver identity");
+    }
+    host->live_selection->replace(choices,[&](std::size_t slot){host->prepare_target(slot);});
+    return 0;
+  }catch(const std::exception& e){message(error,size,e.what());return -1;}
+   catch(...){message(error,size,"Cannot update live receivers");return -1;}
+#else
+  message(error,size,"Live receiver updates require the r8.7 dev.3184 bridge");return -1;
 #endif
 }
 int qarvtk_host_create(const char* sdk,const char* target,const char* folder,const QarvtkHostPlacement* placement,

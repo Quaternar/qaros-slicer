@@ -9,18 +9,18 @@ import ctk
 import slicer
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule, ScriptedLoadableModuleWidget
 
-LIVE_VERSION = "r8.6"
+LIVE_VERSION = "r8.7"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 if (Path(__file__).resolve().parent / "QarosVTKLib").is_dir():
     from QarosVTKLib.qarvtk_host_view import create_host_views, workspace_envelope
-    from QarosVTKLib.qarvtk_host_runtime import (HostTransport, HubConnection, DeviceSelection,
+    from QarosVTKLib.qarvtk_host_runtime import (HostTransport, HubConnection, DeviceSelection, VisualizerReceiverCreator,
                                                MAX_SELECTED_TARGETS, default_sdk_path, default_host_dll_path)
     from QarosVTKLib.qarvtk_host_panels import SlicePanels
     from QarosVTKLib.qarvtk_runtime import user_directory
 else:
     from qarvtk_host_view import create_host_views, workspace_envelope
-    from qarvtk_host_runtime import (HostTransport, HubConnection, DeviceSelection,
+    from qarvtk_host_runtime import (HostTransport, HubConnection, DeviceSelection, VisualizerReceiverCreator,
                                     MAX_SELECTED_TARGETS, default_sdk_path, default_host_dll_path)
     from qarvtk_host_panels import SlicePanels
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -42,6 +42,7 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
         super().setup()
         self.transport = None
         self.connection = None
+        self.receiverCreator = VisualizerReceiverCreator()
         self.nextDevicePoll = 0.
         self.activeReceiverIds = []
         self.lastStartError = None
@@ -147,14 +148,24 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
         self.connectionStatus = qt.QLabel("Not connected to QAROS.")
         self.connectionStatus.wordWrap = True
         form.addRow(self.connectionStatus)
+        self.newReceiverButton = qt.QPushButton("New Visualizer receiver")
+        self.newReceiverButton.toolTip = "Create and start a receiver in QAROS Visualizer, then check it below. Available during streaming too."
+        self.newReceiverButton.connect("clicked()", self.create_receiver)
+        form.addRow(self.newReceiverButton)
+        self.receiverCreationStatus = qt.QLabel("")
+        self.receiverCreationStatus.wordWrap = True
+        form.addRow(self.receiverCreationStatus)
         self.receiverWidget = qt.QWidget()
         self.receiverLayout = qt.QVBoxLayout(self.receiverWidget)
         self.receiverLayout.setContentsMargins(0, 0, 0, 0)
-        self.noReceivers = qt.QLabel("Connect a headset or start a Visualizer receiver in QAROS.")
+        self.noReceivers = qt.QLabel("Connect a headset or use New Visualizer receiver above.")
         self.noReceivers.wordWrap = True
         self.receiverLayout.addWidget(self.noReceivers)
         form.addRow("Stream to", self.receiverWidget)
-        self.hubHint = qt.QLabel("Check the connected receivers to use. Several headsets and Visualizer receivers can stream together (up to eight receivers). Unavailable receivers cannot be selected. Stop streaming to change the selection. Keep QAROS and headset players on the same version.")
+        self.receiverSelectionStatus = qt.QLabel("")
+        self.receiverSelectionStatus.wordWrap = True
+        form.addRow(self.receiverSelectionStatus)
+        self.hubHint = qt.QLabel("Check receivers to add or remove them during streaming (up to eight together, including several headsets). Unchecking all pauses delivery until you check one again. Keep QAROS and headset players on the same version.")
         self.hubHint.wordWrap = True
         form.addRow(self.hubHint)
         self.startButton = qt.QPushButton("Start live streaming")
@@ -210,14 +221,26 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
         self.update_controls()
 
     def select_device(self, key, checked):
+        previous = set(self.deviceSelection.checked)
         try:
             self.deviceSelection.select(key, checked)
+            if self.transport and self.transport.running:
+                requested = self.deviceSelection.requested_ids(self.activeReceiverIds)
+                self.transport.set_receivers(requested)
+                self.activeReceiverIds = requested
             self.lastStartError = None
+            self.receiverSelectionStatus.text = ""
             self.settings.setValue("QAROS_LIVE/Receivers", json.dumps(sorted(self.deviceSelection.checked)))
-        except ValueError as error:
-            self.connectionStatus.text = str(error)
+        except (ValueError, RuntimeError) as error:
+            self.deviceSelection.checked = previous
+            self.receiverSelectionStatus.text = str(error)
         self.update_device_rows()
         self.update_controls()
+
+    def create_receiver(self, *args):
+        if not self.cleaned_up and self.receiverCreator.start():
+            self.receiverCreationStatus.text = "Creating a Visualizer receiver..."
+            self.update_controls()
 
     def update_device_rows(self):
         running = bool(self.transport and self.transport.running)
@@ -246,12 +269,14 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
             previous = box.blockSignals(True)
             box.checked = key in (self.activeReceiverIds if running else self.deviceSelection.checked) and (peer["available"] or running)
             box.blockSignals(previous)
-            box.enabled = peer["available"] and not running
+            box.enabled = (peer["available"] or (running and key in self.activeReceiverIds)) and not (
+                running and self.transport.stopping)
 
     def update_controls(self):
         if self.cleaned_up:
             return
         running = bool(self.transport and self.transport.running)
+        self.newReceiverButton.enabled = not self.receiverCreator.running
         if running != self.lastStreamRunning:
             self.lastStreamRunning = running
             self.update_device_rows()
@@ -300,6 +325,7 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
                                             connection=self.connection, selected_peers=selected_receivers)
             self.lastStartError = None
             self.activeReceiverIds = list(selected_receivers)
+            self.deviceSelection.checked = set(selected_receivers)
             created_transport = self.transport
             self.transport.diagnostics.event("PLUGIN " + json.dumps(dict(
                 version=LIVE_VERSION, path=str(Path(__file__).resolve()), orientation_mode="fixed_ras")))
@@ -359,6 +385,10 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
 
     def tick(self):
         now = perf_counter()
+        creation = self.receiverCreator.poll()
+        if creation and not self.cleaned_up:
+            self.receiverCreationStatus.text = creation[1]
+            self.nextDevicePoll = 0.
         if self.connection and now >= self.nextDevicePoll:
             self.nextDevicePoll = now + .5
             try:
