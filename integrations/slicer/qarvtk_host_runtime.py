@@ -91,7 +91,7 @@ class VisualizerMcp:
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         self.headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
         self.request("initialize", dict(protocolVersion="2024-11-05", capabilities={},
-                     clientInfo=dict(name="qaros-slicer", version="r8.7")), 1)
+                     clientInfo=dict(name="qaros-slicer", version="r8.8")), 1)
         self.request("notifications/initialized", None, None)
 
     def request(self, method, params, request_id):
@@ -466,6 +466,8 @@ def library(path):
         })
     if info.get("live_selection") == 1:
         signatures["host_set_receivers"] = ([c.c_void_p, c.c_char_p, c.c_char_p, c.c_uint32], c.c_int)
+    if info.get("frame_abort") == 1:
+        signatures["host_abort"] = ([c.c_void_p, c.c_uint64], c.c_int)
     for name, (args, result) in signatures.items():
         symbol = "qarvtk_" + name if name.startswith(("hub_", "host_")) else "qarvtk_host_" + name
         function = getattr(dll, symbol)
@@ -539,7 +541,8 @@ class HostTransport:
             raise RuntimeError(error.value.decode("utf-8", "replace"))
         self.diagnostics = HostTimingLog(self.log_folder)
         self.diagnostics.event("SDK " + json.dumps(dict(root=str(sdk), header_sha256=digest,
-                                                       host_dll=str(Path(dll_path).resolve()), target_mode=target)))
+                                                       host_dll=str(Path(dll_path).resolve()), target_mode=target,
+                                                       native_capabilities=self.dll._qarvtk_info)))
         self.diagnostics.event("ABI 5 independent app volumes in one session; isolated native rendering per workspace; read-only slice video panels; "
                                "workspace follows Slicer bounds and SDK placement; "
                                "same-view layout changes preserve streaming; explicit stop reasons; "
@@ -651,6 +654,8 @@ class HostTransport:
                 finally:
                     self.host.window.MakeCurrent()
         except Exception as error:
+            if self.running and getattr(self.dll, "_qarvtk_info", {}).get("frame_abort") == 1:
+                self.dll.qarvtk_host_abort(self.handle, self.frame.serial)
             self.diagnostics.event("ERROR: " + str(error))
             self.request_stop("Transport error: " + str(error))
             raise

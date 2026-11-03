@@ -1,4 +1,4 @@
-# Slicer Live r8.7: change receivers during streaming
+# Slicer Live r8.8: change receivers during streaming
 
 Open QAROS Live Renderer and allow its connection in the Hub if requested.
 The plugin keeps one connection with the fixed app tag
@@ -20,8 +20,8 @@ The plugin keeps one connection with the fixed app tag
 5. Change the checkboxes while streaming to add or remove receivers. Other
    selected receivers continue; unchecked targets retire on a worker. Uncheck
    all to pause delivery, then check a connected receiver to resume.
-   **Stop** closes all senders and
-   workspaces but keeps the Hub connection and app tag. **Disconnect** closes
+   **Stop** detaches receivers and closes all senders, retaining empty
+   workspaces, the Hub connection and app tag. **Disconnect** closes
    that connection. Do not add a new source for every Start.
 
 Check marks follow exact peer ids and survive list reordering. Disconnected
@@ -33,9 +33,10 @@ the SDK reconnects to that same peer; another checked receiver can continue.
 If a receiver is replaced, uncheck the old one and check its replacement.
 
 With N selected receivers and V source volumes the plugin creates N*V senders.
-Each sender owns an independent SDK WGL context. One frame lease and the
-existing fair scheduler serialize use of Slicer's GUI renderer, so adding
-headsets increases the rendering work. No performance target is implied.
+Each sender owns independent SDK and GPU-completion WGL contexts. Each can
+have one pending frame; a FIFO queue serializes use of Slicer's GUI renderer.
+Receivers wait independently for their SDK/GPU cycles. Adding headsets still
+increases the rendering work. No performance target is implied.
 
 To test, check two headsets, verify the independent views on both, then check
 an additional Visualizer without stopping. Uncheck one target and verify the

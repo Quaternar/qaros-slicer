@@ -91,7 +91,7 @@ Jeho nový Live plugin se připravuje v [PR #4](https://github.com/HonzaHovora/Q
 
 ## Když se něco nepovede
 
-Aktuální modul ukazuje **Live plugin r8.7**; najetím na tento řádek zjistíš
+Aktuální modul ukazuje **Live plugin r8.8**; najetím na tento řádek zjistíš
 cestu skutečně načteného souboru. Po Pull vždy spusť `UPDATE-LIVE-PLUGIN.cmd`
 se zavřeným Slicerem. Nastavení 14″ je od r8.3 předané explicitně i již
 existujícímu panelu. U náhledů se skrývají rohové anotace řezů i ve Sliceru;

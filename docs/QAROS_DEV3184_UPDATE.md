@@ -1,4 +1,4 @@
-# Slicer Live r8.7 with QAROS dev.3184
+# Slicer Live r8.8 with QAROS dev.3184
 
 This update targets the complete installed **QAROS 0.9.0-dev.3184+2ccfb349**
 on Windows x64, inspected on 2026-10-30. The registry and installed changelog
@@ -10,7 +10,7 @@ report this version. The exact header is pinned in
 
 1. Stop streaming and close Slicer completely.
 2. Update the checkout and run `UPDATE-LIVE-PLUGIN.cmd`.
-3. Open Slicer and check **Live plugin r8.7** in QAROS Live Renderer.
+3. Open Slicer and check **Live plugin r8.8** in QAROS Live Renderer.
 4. Keep QAROS and headset players on the same version. This QAROS release
    changes app approvals and headset pairing; complete the Hub's prompts
    if requested. The plugin does not delete or replace QAROS identities.
@@ -20,7 +20,7 @@ report this version. The exact header is pinned in
    receivers. Offline receivers are disabled; a connected Visualizer can be
    used without a headset. Existing Additional module paths remain valid.
 
-## Persistent connection and live selection in r8.7
+## Persistent connection and live selection in r8.8
 
 Opening the module connects to the Hub once, with the explicit application tag
 `slicer.qaros.quaternar`. The tag does not contain a date, PID, random id or
@@ -48,10 +48,16 @@ plugin respects that setting and reads its configured local port (default
 17872). Creation runs off the GUI thread and is never retried automatically:
 after a timeout, check the Visualizer list before creating another receiver.
 
-Each selected receiver has its own stereo sender and shared WGL context per
-source volume. The renderer still leases at most one frame at a time across
-all receiver/volume routes. Slice panels are visible only to selected receivers
+Each selected receiver has its own stereo sender and shared WGL contexts per
+source volume. A bounded FIFO queue leases one GUI frame at a time; each
+receiver's SDK and GPU-completion waits proceed independently. Copies use the
+original host GL command stream and a per-frame completion fence. The existing
+VTK 9.6 single-pass CT depth hook is preserved. Slice panels are visible only to selected receivers
 whose stream setup has completed.
+
+The r8.8 candidate and its controlled comparison with r8.7 are described in
+[SLICER_RENDER_PERFORMANCE.md](SLICER_RENDER_PERFORMANCE.md). Reduced GUI
+preparation time does not by itself guarantee higher FPS or reduced jitter.
 
 The updater installs `downloads/qarvtk-live-dev3184.zip`. It verifies the
 SDK fingerprint, archive checksum, ABI and payload hashes before replacing

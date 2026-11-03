@@ -21,6 +21,10 @@ hostitelskou pipeline, zejména VTK GPU Composite pro CT/MR.
 
 ### Instalace nebo aktualizace na Windows
 
+**R8.8 je ověřený návrh přenosu optimalizací z ParaView.** Příprava snímku
+na GUI je kratší, výrazné zrychlení FPS ani zlepšení jitteru měření nepotvrdilo.
+[Srovnání a stav nasazení](docs/SLICER_RENDER_PERFORMANCE.md).
+
 1. Zastav streaming a zavři Slicer.
 2. V GitHub Desktop vyber `main`, proveď **Fetch origin → Pull origin**.
 3. Spusť **`UPDATE-LIVE-PLUGIN.cmd`**. Funguje i pro první instalaci.
@@ -29,7 +33,7 @@ hostitelskou pipeline, zejména VTK GPU Composite pro CT/MR.
    z tohoto checkoutu a restartuj Slicer.
 5. Otevři **QAROS → QAROS Live Renderer**.
 
-Aktualizátor nainstaluje balíček **r8.7** pro kompletní
+Aktualizátor nainstaluje balíček **r8.8** pro kompletní
 **QAROS 0.9.0-dev.3184+2ccfb349**. Instalaci hledá v registru Windows, obvykle
 `C:\Program Files\Quaternar\QAROS`. Ověří SDK i obsah ZIPu, zazálohuje původní
 soubory a odstraní starý modul včetně exportních helperů a Python cache ze
@@ -69,13 +73,13 @@ cestu v Additional module paths. Aktualizátor neprohledává cizí složky.
   `slicer.qaros.quaternar`. Tlačítko **Disconnect** ukončí také toto spojení.
   Před dalším Startem počkej na dokončení Stop. Přijímače lze měnit za běhu.
   Lukáš potvrdil chybu GUI na straně QAROS
-  a pracuje na opravě (zpráva od Jana 22. 10. 2026). R8.7 aktualizuje plugin;
+  a pracuje na opravě (zpráva od Jana 22. 10. 2026). R8.8 aktualizuje plugin;
   oprava GUI přijde z QAROS. Problémy s připojením po Stop/Start je potřeba
   ověřit zvlášť.
 
-Po aktualizaci musí modul zobrazovat **Live plugin r8.7**. Samotný Pull
+Po aktualizaci musí modul zobrazovat **Live plugin r8.8**. Samotný Pull
 neaktualizuje nainstalované soubory; spusť instalátor a restartuj Slicer.
-R8.7 podporuje SDK dev.3184 a živé změny vybraných přijímačů podle jejich přítomnosti
+R8.8 podporuje SDK dev.3184 a živé změny vybraných přijímačů podle jejich přítomnosti
 v session. QAROS i přehrávač v brýlích musí používat stejnou verzi; po aktualizaci
 může Hub požádat o nové schválení aplikace nebo spárování zařízení.
 [Brýle](docs/HEADSET_STREAMING.md) · [Více objemů](docs/MULTIPLE_VOLUMES.md) ·

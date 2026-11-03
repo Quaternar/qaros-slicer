@@ -56,7 +56,8 @@ QARVTK_HOST_API int qarvtk_host_set_receivers(QarvtkHost*,const char* peer_ids,c
 QARVTK_HOST_API int qarvtk_host_create(const char* sdk_root,const char* target,const char* log_folder,
                                      const QarvtkHostPlacement*,QarvtkHost** result,char* error,uint32_t error_size);
 /* One session, one independently movable app volume per entry.
-   At most one frame is leased to the GUI at a time, fairly across ready senders. */
+   Each sender pumps begin/show independently with one bounded pending frame.
+   GUI rendering remains serial on the original host renderer. */
 QARVTK_HOST_API int qarvtk_host_create_volumes(const char* sdk_root,const char* target,const char* log_folder,
     const QarvtkHostVolume*,uint32_t count,QarvtkHost** result,char* error,uint32_t error_size);
 QARVTK_HOST_API int qarvtk_host_poll(QarvtkHost*,QarvtkHostFrame*);
@@ -66,6 +67,9 @@ QARVTK_HOST_API int qarvtk_host_depth(QarvtkHost*,uint64_t serial,uint32_t eye,
                                      uint32_t color,uint32_t depth,uint32_t volume_color,uint32_t volume_depth,
                                      uint32_t width,uint32_t height);
 QARVTK_HOST_API int qarvtk_host_finish(QarvtkHost*,uint64_t serial);
+/* After a render/copy exception, call only AFTER restoring host render state.
+   Releases the acquired frame so cancellation can safely retire its textures. */
+QARVTK_HOST_API int qarvtk_host_abort(QarvtkHost*,uint64_t serial);
 QARVTK_HOST_API void qarvtk_host_stop(QarvtkHost*);
 QARVTK_HOST_API int qarvtk_host_destroy(QarvtkHost*);
 QARVTK_HOST_API void qarvtk_host_status(QarvtkHost*,char* text,uint32_t size);

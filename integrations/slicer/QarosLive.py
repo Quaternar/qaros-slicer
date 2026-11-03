@@ -9,7 +9,7 @@ import ctk
 import slicer
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule, ScriptedLoadableModuleWidget
 
-LIVE_VERSION = "r8.7"
+LIVE_VERSION = "r8.8"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 if (Path(__file__).resolve().parent / "QarosVTKLib").is_dir():

@@ -46,6 +46,28 @@ class FakeDll:
 
 
 class HostRuntimeTest(unittest.TestCase):
+    def test_failed_frame_aborts_only_after_restoring_the_host(self):
+        with tempfile.TemporaryDirectory() as folder:
+            events = []
+            def fail(*args, **kwargs):
+                try:
+                    raise RuntimeError('injected frame failure')
+                finally:
+                    events.append('restored')
+            t = self.transport(folder, fail)
+            t.dll._qarvtk_info = {'frame_abort': 1}
+            def abort(handle, serial):
+                self.assertEqual(events, ['restored'])
+                events.append('aborted')
+                self.assertEqual(serial, 1)
+                return 0
+            t.dll.qarvtk_host_abort = abort
+            with self.assertRaisesRegex(RuntimeError, 'injected frame failure'):
+                t.tick()
+            self.assertEqual(events, ['restored', 'aborted'])
+            self.assertEqual(t.dll.finished, [])
+            self.assertEqual(t.dll.stops, 1)
+
     def test_old_bridge_cannot_silently_claim_14_inch_panels(self):
         transport = object.__new__(HostTransport)
         transport.dll = MagicMock()

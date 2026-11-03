@@ -75,8 +75,8 @@ $info = Get-Content -LiteralPath (Join-Path $staging 'HOST_UPDATE_INFO.json') -R
 if ($info.sdk_header_sha256 -ne $expectedSdk -or $info.host_abi -ne 5) {
     throw 'Archive SDK or ABI metadata differs from this updater.'
 }
-if ($info.live_selection -ne 1 -or $info.receiver_creation -ne 'visualizer_mcp' -or $info.device_selection -ne 1 -or $info.persistent_connection -ne 1 -or $info.stable_app_tag -ne 'slicer.qaros.quaternar' -or $info.max_selected_targets -ne 8 -or $info.multi_target -ne 1 -or $info.build -ne 'installed-hub-update-r8.7' -or $info.native_build -ne 'installed-hub-update-r8.7' -or $info.runtime_teardown -ne 'handle_only' -or $info.target_discovery -ne 3 -or $info.panel_probe -ne 0 -or $info.slice_panel_diagonal_inches -ne 14 -or $info.panel_size_on_start -ne 1 -or $info.panel_image_region -ne 1 -or $info.orientation_mode -ne 'fixed_ras') {
-    throw 'This updater requires the r8.7 package with peer presence discovery and image-only 14-inch panels.'
+if ($info.independent_receiver_cycles -ne 1 -or $info.frame_abort -ne 1 -or $info.render_queue_depth_per_sender -ne 1 -or $info.gpu_copy_mode -ne 'host_context_per_receiver_fence' -or $info.live_selection -ne 1 -or $info.receiver_creation -ne 'visualizer_mcp' -or $info.device_selection -ne 1 -or $info.persistent_connection -ne 1 -or $info.stable_app_tag -ne 'slicer.qaros.quaternar' -or $info.max_selected_targets -ne 8 -or $info.multi_target -ne 1 -or $info.build -ne 'installed-hub-update-r8.8' -or $info.native_build -ne 'installed-hub-update-r8.8' -or $info.runtime_teardown -ne 'handle_only' -or $info.target_discovery -ne 3 -or $info.panel_probe -ne 0 -or $info.slice_panel_diagonal_inches -ne 14 -or $info.panel_size_on_start -ne 1 -or $info.panel_image_region -ne 1 -or $info.orientation_mode -ne 'fixed_ras') {
+    throw 'This updater requires the r8.8 package with peer presence discovery and image-only 14-inch panels.'
 }
 foreach ($relative in $files) {
     if ($relative -eq 'HOST_UPDATE_INFO.json') { continue }
@@ -157,7 +157,7 @@ $resolvedStaging = [IO.Path]::GetFullPath($staging)
 $packageRoot = [IO.Path]::GetFullPath((Join-Path $RepoRoot 'package')).TrimEnd('\') + '\'
 if (-not $resolvedStaging.StartsWith($packageRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe staging cleanup path' }
 Remove-Item -LiteralPath $resolvedStaging -Recurse
-Write-Host 'QAROS Live Renderer r8.7 installed for QAROS 0.9.0-dev.3184+2ccfb349 (ABI 5).'
+Write-Host 'QAROS Live Renderer r8.8 installed for QAROS 0.9.0-dev.3184+2ccfb349 (ABI 5).'
 Write-Host 'The retired QAROS Streaming module and its export helpers were removed from managed plugin folders.'
 Write-Host "Previous plugin saved to: $backup"
 Write-Host "Slicer Additional module paths: $(Join-Path $destination 'plugins\slicer')"

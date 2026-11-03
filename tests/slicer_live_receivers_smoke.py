@@ -25,7 +25,7 @@ from QarosVTKLib.qarvtk_host_view import create_host_views
 
 def run():
     assert slicer.app.layoutManager(), 'This GPU test requires the main Slicer window'
-    assert QarosLive.LIVE_VERSION == 'r8.7', 'Install r8.7 before this test'
+    assert QarosLive.LIVE_VERSION == 'r8.8', 'Install r8.8 before this test'
     client = VisualizerMcp()
     hub = transport = None
     created, records = [], []

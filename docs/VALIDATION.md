@@ -1,5 +1,40 @@
 # Validation and next work
 
+## Slicer Live r8.8 candidate: ParaView transport port, 2026-11-03
+
+Ported ParaView r6c's independent cancellable receiver cycles, bounded GUI
+queue, original-context copies and per-frame GPU completion fences. The
+existing Slicer VTK 9.6 depth shader and desktop attachment code are retained.
+
+MSVC Release build and **22/22 CTest suites PASS** (8.09 s), including 240
+actual stereo GPU copies with immediate borrowed-texture reuse. Both bridge
+translation units passed syntax checks against all four older SDK profiles.
+Actual Slicer 5.12.4 / VTK 9.6.2 tests passed single-pass CT depth against the
+native VTK reference, multiple volumes, ROI, occlusion, custom shaders, resize,
+MSAA, layout changes, exact desktop restoration and slice preview fixtures.
+The candidate streamed to two real Visualizers, paused/resumed and recovered
+after a real partial GPU-copy failure. Source and workspace ids stayed the
+same across its further three Start/Stop cycles. The dedicated test slots were
+removed after the measurements.
+
+A controlled original/candidate/original comparison used the same 96³ CT and
+two receivers, with one- then two-receiver 30 s samples. GUI preparation fell
+from about 16 ms to 9–10 ms. One-receiver FPS remained in the original 20–22
+range; two-receiver total throughput rose only modestly from 31.6–32.5 to
+33.8 FPS. The p99 comparison does not establish reduced jitter. This is not a
+claim of ParaView's large FPS improvement recurring in Slicer.
+
+Windows PowerShell 5.1 installation fixtures passed package integrity, backup,
+rollback, fresh install and wrong-SDK rejection. The user's installed r8.7 was
+not replaced; r8.8 remains a draft candidate. An isolated actual Slicer process
+loaded the candidate ZIP's r8.8 module, PythonQt controls and native ABI with
+the new capabilities, without enrolling another Hub connection. The current candidate ZIP
+`downloads/qarvtk-live-dev3184.zip` SHA-256 is
+`f8aeceeb07129b38808e39f81562d4371bbd435078f6d2595dedc20f1850309e`.
+Full method, scope and metrics: [SLICER_RENDER_PERFORMANCE.md](SLICER_RENDER_PERFORMANCE.md)
+and its aggregated JSON. Raw local traces are not committed. Physical headset
+streaming and long-session display cadence remain untested here.
+
 ## Slicer Live r8.7: live receiver changes and creation, 2026-10-30
 
 R8.7 keeps fixed receiver/volume routes while checkboxes change during
@@ -41,7 +76,7 @@ Local verification:
   `package/live-backup-20261030-185056-98043f94`. An isolated actual Slicer
   process loaded the installed r8.7 module and DLL with live-selection support.
 
-Current `downloads/qarvtk-live-dev3184.zip` SHA-256:
+R8.7 `downloads/qarvtk-live-dev3184.zip` SHA-256 at that validation:
 `529395378609d29d01e822c16fe8ea9c34e86b0bf20203546d08d5679fbe5bd4`.
 Physical multi-headset transfer and performance require verification on the
 chosen headsets. The earlier QAROS GUI crash is not claimed fixed.

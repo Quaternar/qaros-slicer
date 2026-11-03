@@ -1,0 +1,318 @@
+{
+  "date": "2026-11-03",
+  "method": "A/B/A in separate temporary-settings Slicer processes, same two dedicated Visualizer slots, same synthetic CT, one then two receivers, 5 s warmup and 30 s per measurement",
+  "measurement": "Completed GUI stereo preparations per second; two-receiver FPS is the total, not FPS per receiver or display latency",
+  "slicer": "5.12.4",
+  "vtk": "9.6.2",
+  "dataset": {
+    "dimensions": [
+      96,
+      96,
+      96
+    ],
+    "spacing_mm": [
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "runs": [
+    {
+      "run": "baseline-before",
+      "native_sha256": "8ed1248f122cbc93fa5f905e96305747208515760989c2f056d25be0518b82a7",
+      "phases": [
+        {
+          "receivers": 1,
+          "frames": 667,
+          "seconds": 30.01744090000284,
+          "completed_gui_stereo_fps": 22.220415198683273,
+          "interval_median_ms": 44.67599999770755,
+          "interval_p95_ms": 58.822350001719315,
+          "interval_p99_ms": 66.67522999778164,
+          "interval_max_ms": 135.66479999281,
+          "mean_ms": {
+            "frame_wall_ms": 15.832865667377384,
+            "desktop_restore_ms": 0.37485562234201,
+            "host_render_calls": 2.0,
+            "finish_call_ms": 0.0313130438663247,
+            "volume_depth_passes": 0.0,
+            "desktop_restore_render_calls": 0.0,
+            "depth_copy_call_ms": 3.1716037482983883,
+            "depth_render_ms": 0.0,
+            "color_copy_call_ms": 4.159683807806434,
+            "desktop_save_ms": 0.32032533759349674,
+            "color_render_ms": 5.990037931200198,
+            "host_render_thread_cpu_ms": 5.434782608695652
+          },
+          "eye_sizes": [
+            [
+              1920,
+              1080
+            ],
+            [
+              1920,
+              1080
+            ]
+          ],
+          "render_sizes": [
+            [
+              1920,
+              1080
+            ],
+            [
+              1920,
+              1080
+            ]
+          ]
+        },
+        {
+          "receivers": 2,
+          "frames": 975,
+          "seconds": 30.00006439999561,
+          "completed_gui_stereo_fps": 32.49993023348786,
+          "interval_median_ms": 28.92930000234628,
+          "interval_p95_ms": 47.127770003135055,
+          "interval_p99_ms": 53.38727700727759,
+          "interval_max_ms": 63.24540000059642,
+          "mean_ms": {
+            "frame_wall_ms": 16.66203435934268,
+            "desktop_restore_ms": 0.40711856388952583,
+            "host_render_calls": 2.0,
+            "finish_call_ms": 0.03515497447015383,
+            "volume_depth_passes": 0.0,
+            "desktop_restore_render_calls": 0.0,
+            "depth_copy_call_ms": 3.2427488203542545,
+            "depth_render_ms": 0.0,
+            "color_copy_call_ms": 4.259761640912471,
+            "desktop_save_ms": 0.39172071797880703,
+            "color_render_ms": 6.325438666703681,
+            "host_render_thread_cpu_ms": 5.833333333333333
+          },
+          "eye_sizes": [
+            [
+              1920,
+              1080
+            ],
+            [
+              1920,
+              1080
+            ]
+          ],
+          "render_sizes": [
+            [
+              1920,
+              1080
+            ],
+            [
+              1920,
+              1080
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "run": "independent-async",
+      "native_sha256": "4f6b54699a20880224e802b3102e44f424b6041dd85a5a3d3165f52a9a4b0e70",
+      "phases": [
+        {
+          "receivers": 1,
+          "frames": 610,
+          "seconds": 30.00111470000411,
+          "completed_gui_stereo_fps": 20.33257784251318,
+          "interval_median_ms": 48.81989999557845,
+          "interval_p95_ms": 62.39615998929367,
+          "interval_p99_ms": 75.00984799931753,
+          "interval_max_ms": 131.18280000344384,
+          "mean_ms": {
+            "volume_depth_passes": 0.0,
+            "depth_render_ms": 0.0,
+            "finish_call_ms": 0.1607900000650619,
+            "host_render_calls": 2.0,
+            "host_render_thread_cpu_ms": 6.787909836065574,
+            "desktop_save_ms": 0.3462172135544681,
+            "color_copy_call_ms": 0.430515245629902,
+            "depth_copy_call_ms": 0.2848839344118997,
+            "frame_wall_ms": 9.605406065348376,
+            "color_render_ms": 6.381385574369218,
+            "desktop_restore_ms": 0.33418278674572155,
+            "desktop_restore_render_calls": 0.0
+          },
+          "eye_sizes": [
+            [
+              1920,
+              1080
+            ],
+            [
+              1920,
+              1080
+            ]
+          ],
+          "render_sizes": [
+            [
+              1920,
+              1080
+            ],
+            [
+              1920,
+              1080
+            ]
+          ]
+        },
+        {
+          "receivers": 2,
+          "frames": 1013,
+          "seconds": 30.003141199995298,
+          "completed_gui_stereo_fps": 33.763131441722464,
+          "interval_median_ms": 28.578399993421044,
+          "interval_p95_ms": 50.41628999824752,
+          "interval_p99_ms": 57.838579001108876,
+          "interval_max_ms": 66.63499999558553,
+          "mean_ms": {
+            "volume_depth_passes": 0.0,
+            "depth_render_ms": 0.0,
+            "finish_call_ms": 0.1487392891494434,
+            "host_render_calls": 2.0,
+            "host_render_thread_cpu_ms": 6.38573543928924,
+            "desktop_save_ms": 0.33522260616713195,
+            "color_copy_call_ms": 0.4036356368188784,
+            "depth_copy_call_ms": 0.2658243829141732,
+            "frame_wall_ms": 9.293913918991848,
+            "color_render_ms": 6.31655202395336,
+            "desktop_restore_ms": 0.29986357342347003,
+            "desktop_restore_render_calls": 0.0
+          },
+          "eye_sizes": [
+            [
+              1920,
+              1080
+            ],
+            [
+              1920,
+              1080
+            ]
+          ],
+          "render_sizes": [
+            [
+              1920,
+              1080
+            ],
+            [
+              1920,
+              1080
+            ]
+          ]
+        }
+      ],
+      "lifecycle": {
+        "pause_resume": true,
+        "restart_cycles": 3,
+        "partial_copy_failure_recovery": true,
+        "stable_source": true,
+        "stable_workspace": true
+      }
+    },
+    {
+      "run": "baseline-after",
+      "native_sha256": "8ed1248f122cbc93fa5f905e96305747208515760989c2f056d25be0518b82a7",
+      "phases": [
+        {
+          "receivers": 1,
+          "frames": 601,
+          "seconds": 30.001447199989343,
+          "completed_gui_stereo_fps": 20.03236697195772,
+          "interval_median_ms": 50.26700000598794,
+          "interval_p95_ms": 61.171460000332445,
+          "interval_p99_ms": 70.97337000785045,
+          "interval_max_ms": 130.44219999574125,
+          "mean_ms": {
+            "desktop_restore_ms": 0.37667787019895566,
+            "host_render_calls": 2.0,
+            "host_render_thread_cpu_ms": 5.459650582362729,
+            "finish_call_ms": 0.029067887419822337,
+            "color_render_ms": 5.909634442539334,
+            "desktop_restore_render_calls": 0.0,
+            "color_copy_call_ms": 4.338969217831061,
+            "desktop_save_ms": 0.31277886819452383,
+            "frame_wall_ms": 15.93192845287856,
+            "volume_depth_passes": 0.0,
+            "depth_render_ms": 0.0,
+            "depth_copy_call_ms": 3.2592013312372754
+          },
+          "eye_sizes": [
+            [
+              1920,
+              1080
+            ],
+            [
+              1920,
+              1080
+            ]
+          ],
+          "render_sizes": [
+            [
+              1920,
+              1080
+            ],
+            [
+              1920,
+              1080
+            ]
+          ]
+        },
+        {
+          "receivers": 2,
+          "frames": 949,
+          "seconds": 30.015399199997773,
+          "completed_gui_stereo_fps": 31.617104063039427,
+          "interval_median_ms": 29.702100000577047,
+          "interval_p95_ms": 49.42553000364569,
+          "interval_p99_ms": 54.5329090108862,
+          "interval_max_ms": 60.308800006168894,
+          "mean_ms": {
+            "desktop_restore_ms": 0.3748007377048265,
+            "host_render_calls": 2.0,
+            "host_render_thread_cpu_ms": 5.647391991570074,
+            "finish_call_ms": 0.031348471860381706,
+            "color_render_ms": 5.947083350818961,
+            "desktop_restore_render_calls": 0.0,
+            "color_copy_call_ms": 4.253431085189358,
+            "desktop_save_ms": 0.3371939935083074,
+            "frame_wall_ms": 16.047033192868344,
+            "volume_depth_passes": 0.0,
+            "depth_render_ms": 0.0,
+            "depth_copy_call_ms": 3.351446574623034
+          },
+          "eye_sizes": [
+            [
+              1920,
+              1080
+            ],
+            [
+              1920,
+              1080
+            ]
+          ],
+          "render_sizes": [
+            [
+              1920,
+              1080
+            ],
+            [
+              1920,
+              1080
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "conclusions": {
+    "gui_preparation_reduced": true,
+    "single_receiver_fps_improvement_established": false,
+    "large_fps_gain_established": false,
+    "jitter_improvement_established": false,
+    "physical_headset_tested": false,
+    "installed_automatically": false
+  }
+}
