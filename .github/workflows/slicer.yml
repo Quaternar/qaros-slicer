@@ -10,6 +10,8 @@ on:
       - 'tests/test_host_view_math.py'
       - 'tests/test_host_panels.py'
       - 'tests/slicer_panels_smoke.py'
+      - 'tests/slicer_devices_smoke.py'
+      - 'tests/test_host_devices.py'
       - 'scripts/package_plugins.py'
       - '.github/workflows/slicer.yml'
 permissions:
@@ -40,6 +42,8 @@ jobs:
           python3 tests/test_plugin_packaging.py
       - name: Render stereo and cropped CT using the live host renderer
         run: xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 build-slicer/Slicer --no-splash --ignore-slicerrc --additional-module-paths "$PWD/package/QAROS-VTK-plugins/slicer" --python-script tests/slicer_host_render_smoke.py
+      - name: Select multiple receivers with the real Slicer Qt controls
+        run: xvfb-run -a build-slicer/Slicer --no-splash --testing --no-main-window --additional-module-paths "$PWD/package/QAROS-VTK-plugins/slicer" --python-script tests/slicer_devices_smoke.py
       - name: Preview live slice and video frames without additional renders
         run: xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 build-slicer/Slicer --no-splash --ignore-slicerrc --additional-module-paths "$PWD/package/QAROS-VTK-plugins/slicer" --python-script tests/slicer_panels_smoke.py
       - name: Verify two live volumes against native color and independent VTK tissue depths

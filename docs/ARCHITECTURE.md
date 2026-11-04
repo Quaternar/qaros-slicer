@@ -15,6 +15,31 @@ Historical prototype details below document earlier work; they do not advertise
 the retired Slicer module. Shared standalone code remains for the earlier
 ParaView prototype and development tests.
 
+## Slicer r8.8 candidate: independent receiver completion (2026-11-03)
+
+The ParaView r6c transport changes are portable to Slicer's existing ABI 5
+bridge. Each receiver/volume route has an independent cancellable SDK
+begin/show worker and at most one pending job. A FIFO queue gives the original
+Slicer GUI renderer one acquired job at a time. Waiting for one receiver's
+next pose, GPU completion or SDK show does not hold another receiver's GUI
+slot. Stop cancels queued work and waits for any acquired GUI job to finish
+or abort before SDK textures can retire.
+
+Copies now run in the original host GL command stream, after the VTK draw and
+before its borrowed textures can be overwritten by the next eye. One flushed
+GPU fence completes the stereo frame; a separate shared completion context
+waits on the receiver worker before SDK show or destruction. This replaces
+eight normal per-plane `glFinish` calls. Diagnostic conservative copy mode
+remains available, and partial-copy failures seal/abort only after host state
+has been restored. The Hub keeps empty workspaces until Disconnect and applies
+current size, pose and scale explicitly on each Start.
+
+The VTK 9.6 single-pass CT depth hook and desktop attachment preservation
+already existed in Slicer. They are not new performance changes in r8.8.
+VTK/Qt scene rendering remains serial; independent SDK workers do not render
+the Slicer scene concurrently. See [the measured comparison](SLICER_RENDER_PERFORMANCE.md)
+for the gain in GUI preparation and the separate FPS/jitter results.
+
 ## Host rendering first (decision, 2026-10-14)
 
 The next integration must use the host application's actual rendering pipeline.
@@ -59,13 +84,13 @@ state is restored before returning to the event loop. No events are processed
 while an eye camera is installed. Other windows/stereo modes retain a desktop
 rerender fallback. There is no scene export or CPU image path.
 
-The native C ABI receives texture names only inside Slicer's process. Two owned
+The original R12 native C ABI received texture names only inside Slicer's process. Two owned
 WGL contexts share host resources: one copies frames, one is reserved for SDK
 graphics callbacks. SDK session/frame control runs on a worker. A frame lease
 holds SDK textures until the GUI thread has copied both eyes and planes; Stop
 cancels pending SDK work and destruction waits for worker shutdown. The bridge
 uses the pinned session SDK and imports no host VTK/Qt classes. Conservative
-`glFinish` calls remain unchanged; removing synchronization needs a separate
+`glFinish` calls remained unchanged in that version; removing synchronization needed a separate
 ownership/fence design. R12 changes the Python host capture, not the native SDK
 transport. Two actual eye renders still consume time on the host GUI/GPU thread.
 

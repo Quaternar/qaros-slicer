@@ -1,5 +1,9 @@
 # Lokální vývoj Slicer bridge na Windows
 
+Aktuální aktualizace r8.5 pro QAROS dev.3184 je popsána v
+[QAROS_DEV3184_UPDATE.md](QAROS_DEV3184_UPDATE.md), včetně odkazu na nové
+ověření. Níže je původní záznam sestavení r8.4 z 22. 10. 2026.
+
 Ověřeno 22. 10. 2026 ve zdrojovém commitu
 `d9d523e6aeb4c95ae237c8bb8fe913ce4b8186a9` na Windows x64.
 Projekt byl sestaven v `D:\QAROS_VTK\build-host`, dočasné soubory v

@@ -7,10 +7,10 @@ odstraněn. ANARI je samostatná alternativa, kterou tento instalátor nemění.
 ## Co potřebuješ
 
 - Windows x64 se Slicerem; referenční hostitelské testy používají Slicer 5.12.4.
-- Kompletní QAROS **0.9.0-dev.3008+65dc9aeb**, včetně `include/qar_streaming.h`
+- Kompletní QAROS **0.9.0-dev.3184+2ccfb349**, včetně `include/qar_streaming.h`
   a původní složky `bin`, s podporovanou GPU. Přehrávač v brýlích musí mít
   stejnou verzi; pokud Hub požádá o nové spárování/schválení, dokonči ho.
-- Checkout `HonzaHovora/QAROS_VTK`, větev `main`, například `D:\QAROS_VTK`.
+- Checkout `Quaternar/qaros-slicer`, větev `main`, například `D:\QAROS_VTK`.
 
 Pro instalaci hotového balíčku nepotřebuješ Python, VTK, vcpkg ani kompilátor.
 Použije se Python a renderer dodaný se Slicerem. Nepřepisuj jednotlivé soubory SDK.
@@ -50,14 +50,19 @@ Staré kombinované ZIPy ani náhled kostky pro tento postup nepoužívej.
 
 1. Načti scénu do Sliceru. U CT/MR zapni **Volume Rendering**, zvol **VTK GPU /
    Composite** a ověř obraz v prvním 3D pohledu. ROI a presety mohou zůstat živé.
-2. V QAROS spusť jeden receiver Visualizeru; pro brýle připoj headset.
+2. Připoj headsety nebo vytvoř receiver tlačítkem **New Visualizer receiver**.
+   QAROS Visualizer musí běžet a mít zapnuté Settings → General → Enable MCP endpoint.
 3. V QAROS Live Renderer ověř **Host bridge DLL**:
    `D:/QAROS_VTK/package/windows-start/Release/qarvtk-host.dll`
    a **QAROS SDK folder**: obvykle `C:/Program Files/Quaternar/QAROS`.
-4. Vyber **Stream to**: Visualizer only, Headset only nebo Visualizer + headset.
+4. Po připojení k Hubu zaškrtni konkrétní přijímače v **Stream to**. Můžeš
+   vybrat více headsetů i Visualizerů, nejvýše osm cílů celkem. Nepřipojený
+   headset neblokuje přenos do zaškrtnutého připojeného Visualizeru.
 5. Klikni **Start live streaming**. Případný přístup aplikace Slicer povol v Hubu.
-6. Změny scény se přenášejí živě. **Stop live streaming** uvolní vlastní
-   prostředky; před restartem počkej na opětovné povolení Start.
+6. Změny scény se přenášejí živě. **Stop live streaming** uvolní renderovací
+   prostředky a ponechá stejné spojení s Hubem. **Disconnect** ukončí i toto
+   spojení. Před restartem počkej na dokončení Stop. Výběr cílů lze měnit i za běhu;
+   odškrtnutí všech pozastaví přenos do dalšího zaškrtnutí.
 
 **Model size = 1×** zachovává fyzické měřítko 1:1. Centrovaní scénu pouze
 vystředí. Násobek 1/8× až 8× i nové rozměry pracovního prostoru se použijí
@@ -86,19 +91,19 @@ Jeho nový Live plugin se připravuje v [PR #4](https://github.com/HonzaHovora/Q
 
 ## Když se něco nepovede
 
-Aktuální modul ukazuje **Live plugin r8.4**; najetím na tento řádek zjistíš
+Aktuální modul ukazuje **Live plugin r8.8**; najetím na tento řádek zjistíš
 cestu skutečně načteného souboru. Po Pull vždy spusť `UPDATE-LIVE-PLUGIN.cmd`
 se zavřeným Slicerem. Nastavení 14″ je od r8.3 předané explicitně i již
 existujícímu panelu. U náhledů se skrývají rohové anotace řezů i ve Sliceru;
-po Stop se obnoví. Podrobnosti jsou v [popisu aktualizace](QAROS_DEV3008_UPDATE.md).
+po Stop se obnoví. Podrobnosti jsou v [popisu aktualizace](QAROS_DEV3184_UPDATE.md).
 
 | Projev | Co ověřit |
 | --- | --- |
 | Modul není v nabídce | Celá složka pluginu v Additional module paths, restart Sliceru. |
 | Vidíš i starý QAROS Streaming | Odeber cestu k jiné staré kopii pluginu, nepřidávej zálohu. |
-| SDK / DLL mismatch | Kompletní QAROS dev.3008 a DLL z téhož Live balíčku; nemíchej SDK soubory. |
+| SDK / DLL mismatch | Kompletní QAROS dev.3184 a DLL z téhož Live balíčku; nemíchej SDK soubory. |
 | Start bez obrazu | Receiver nebo připojený headset, správný Stream to, schválení v Hubu. |
-| Po Stop/Start není obraz | Ulož logy aktuálního pokusu. Dřívější workaround byl vytvořit nový receiver a stream restartovat; oprava v dev.3008 zatím není ověřena. |
+| Po Stop/Start není obraz | Ulož logy aktuálního pokusu. Dřívější workaround byl vytvořit nový receiver a stream restartovat; oprava v dev.3184 zatím není ověřena. |
 | Nepodporovaný mapper nebo režim objemu | Pro Live CT/MR použij podporovaný VTK GPU Composite; ověř nejdřív jednoduchou scénu. |
 
 Log folder ukazuje záznamy pluginu; `COLLECT-LOGS.cmd` je zabalí k diagnostice.

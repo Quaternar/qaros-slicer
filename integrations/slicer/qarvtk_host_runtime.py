@@ -3,6 +3,8 @@ import ctypes as c
 import hashlib
 import json
 import os
+import threading
+import urllib.request
 from pathlib import Path
 from time import perf_counter
 from datetime import datetime, timezone
@@ -12,15 +14,206 @@ if __package__:
 else:
     from qarvtk_host_diagnostics import ForegroundWindow, SystemMonitor
 
-EXPECTED_SDK = "55e6e3f48d940ca29331f0528fe475c1b7230fb19a59c31d5525c6e90b097f6c"
+EXPECTED_SDK = "f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52"
+HUB_3008_SDK = "55e6e3f48d940ca29331f0528fe475c1b7230fb19a59c31d5525c6e90b097f6c"
 HUB_2927_SDK = "a32cecd4137dd3b28e0d5e0c1642a066cbea976f81b90f1f31fbac4d0fba8d4a"
 SESSION_2540_SDK = "c709c479cc6a1acc0040fb61a071cc7bc16e65bf5acb90d624d9d6b0a6fcd3c1"
 LEGACY_SDK = "022c40b670f87a066664c37daeb06da525db37fffdf5810e72cff8a5b81e677d"
-HUB_SDKS = {EXPECTED_SDK, HUB_2927_SDK}
+PRESENCE_SDKS = {EXPECTED_SDK, HUB_3008_SDK}
+HUB_SDKS = PRESENCE_SDKS | {HUB_2927_SDK}
 SUPPORTED_SDKS = HUB_SDKS | {SESSION_2540_SDK, LEGACY_SDK}
 DEFAULT_SDK_ROOT = str(Path(os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or
                             "C:/Program Files") / "Quaternar" / "QAROS")
 _libraries = {}  # Never unload a DLL while an SDK callback may still use it.
+APP_TAG = "slicer.qaros.quaternar"
+MAX_SELECTED_TARGETS = 8
+
+
+class DeviceSelection:
+    """Remember explicit receiver ids; never substitute another same-type peer."""
+    def __init__(self, saved=()):
+        self.checked = {key for key in saved if self.valid_id(key)}
+        self.peers = []
+
+    @staticmethod
+    def valid_id(key):
+        return isinstance(key, str) and len(key) == 32 and all(ch in "0123456789abcdef" for ch in key)
+
+    def update(self, snapshot):
+        peers = {}
+        for peer in snapshot.get("peers", []):
+            key = peer.get("id")
+            if not self.valid_id(key) or peer.get("category") not in ("headset", "visualizer"):
+                continue
+            row = dict(peer)
+            row["available"] = bool(snapshot.get("connected") and peer.get("available"))
+            peers[key] = row
+        # Keep selected disconnected rows visible, without redirecting their
+        # check mark to a replacement receiver with the same display name.
+        for old in self.peers:
+            if old["id"] not in peers and old["id"] in self.checked:
+                peers[old["id"]] = dict(old, available=False, presence="Offline")
+        self.peers = sorted(peers.values(), key=lambda p: (p["category"], p.get("name", "").casefold(), p["id"]))
+
+    def select(self, key, checked):
+        if checked:
+            if not any(p["id"] == key and p["available"] for p in self.peers):
+                raise ValueError("Select a connected receiver")
+            if key not in self.checked and len(self.selected_ids()) >= MAX_SELECTED_TARGETS:
+                raise ValueError("Select at most eight receivers")
+            self.checked.add(key)
+        else:
+            self.checked.discard(key)
+
+    def selected_ids(self):
+        return [p["id"] for p in self.peers if p["available"] and p["id"] in self.checked]
+
+    def requested_ids(self, current=()):
+        """Keep an already requested offline peer, without adding absent peers."""
+        return [p["id"] for p in self.peers if p["id"] in self.checked and
+                (p["available"] or p["id"] in current)]
+
+
+class VisualizerMcp:
+    """Supported loopback Visualizer API; no proxy and no mutation retries."""
+    def __init__(self, settings_path=None):
+        path = settings_path or (Path(os.environ.get("LOCALAPPDATA", "")) / "Quaternar/Qaros/streaming-viz/visualizer-settings.json")
+        try:
+            settings = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+        except FileNotFoundError:
+            settings = {}
+        if settings.get("webAppSourceMcpEnabled") is False:
+            raise RuntimeError("In QAROS Visualizer, open Settings > General and enable the MCP endpoint, then try again.")
+        port = settings.get("webAppSourceMcpPort", 17872)
+        if type(port) is not int or not 1 <= port <= 65535:
+            raise RuntimeError("Invalid Visualizer MCP port in local settings")
+        self.url = "http://127.0.0.1:" + str(port) + "/mcp"
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        self.headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+        self.request("initialize", dict(protocolVersion="2024-11-05", capabilities={},
+                     clientInfo=dict(name="qaros-slicer", version="r8.8")), 1)
+        self.request("notifications/initialized", None, None)
+
+    def request(self, method, params, request_id):
+        payload = dict(jsonrpc="2.0", method=method)
+        if request_id is not None: payload["id"] = request_id
+        if params is not None: payload["params"] = params
+        request = urllib.request.Request(self.url, json.dumps(payload).encode("utf-8"), self.headers, method="POST")
+        with self.opener.open(request, timeout=5) as response:
+            session = response.headers.get("Mcp-Session-Id")
+            if session: self.headers["Mcp-Session-Id"] = session
+            if request_id is None: return None
+            data = response.read(1024 * 1024 + 1)
+            if len(data) > 1024 * 1024: raise RuntimeError("Visualizer response is too large")
+        raw = data.decode("utf-8")
+        try:
+            message = json.loads(raw)
+        except ValueError:
+            messages = [json.loads(line[5:].strip()) for line in raw.splitlines() if line.startswith("data:")]
+            message = next((m for m in messages if m.get("id") == request_id), {})
+        if not isinstance(message, dict) or message.get("id") != request_id:
+            raise RuntimeError("Invalid Visualizer MCP response")
+        if "error" in message:
+            raise RuntimeError("Visualizer: " + str(message["error"].get("message", "request failed")))
+        result = message.get("result", {})
+        if not isinstance(result, dict) or result.get("isError"):
+            details = "; ".join(item.get("text", "") for item in result.get("content", []) if isinstance(item, dict)) if isinstance(result, dict) else "invalid result"
+            raise RuntimeError("Visualizer: " + details)
+        structured = result.get("structuredContent", {})
+        if isinstance(structured, dict) and structured.get("ok") is False:
+            raise RuntimeError("Visualizer: " + str(structured.get("error", "request failed")))
+        return result
+
+    def call(self, name, arguments):
+        return self.request("tools/call", dict(name=name, arguments=arguments), 2)
+
+
+class VisualizerReceiverCreator:
+    """Create exactly once in a worker, leaving the GUI/render pump free."""
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.running = False
+        self._result = None
+
+    def start(self):
+        with self._lock:
+            if self.running: return False
+            self.running, self._result = True, None
+        threading.Thread(target=self._create, daemon=True, name="Slicer receiver creation").start()
+        return True
+
+    def _create(self):
+        try:
+            VisualizerMcp().call("viz_receiver_add", {"start": True})
+            result = (True, "Receiver created and started. Check it in Stream to when it appears.")
+        except Exception as error:
+            # Do not retry a timed-out add: the receiver may already exist.
+            result = (False, "Cannot confirm receiver creation: " + str(error) +
+                      ". Check QAROS Visualizer before trying again. It must be running with its MCP endpoint enabled (Settings > General).")
+        with self._lock:
+            self._result, self.running = result, False
+
+    def poll(self):
+        with self._lock:
+            result, self._result = self._result, None
+            return result
+
+
+class HubConnection:
+    """One asynchronous enrollment shared by discovery and every Start/Stop."""
+    def __init__(self, dll_path, sdk_root, log_folder):
+        self.sdk_root = str(Path(sdk_root).resolve())
+        digest = validate_sdk(self.sdk_root)
+        self.dll = library(dll_path)
+        validate_host_sdk(self.dll, digest)
+        info = self.dll._qarvtk_info
+        if (info.get("device_selection") != 1 or info.get("persistent_connection") != 1 or
+                info.get("stable_app_tag") != APP_TAG or info.get("live_selection") != 1):
+            raise RuntimeError("Install the r8.7 bridge for live receiver selection and a stable app tag.")
+        self.handle = c.c_void_p()
+        self.stopping = False
+        self.snapshot = dict(connected=False, status="Connecting to QAROS...", peers=[])
+        self._buffer = c.create_string_buffer(1024 * 1024)
+        error = c.create_string_buffer(2048)
+        result = self.dll.qarvtk_hub_connect(self.sdk_root.encode("utf-8"), str(log_folder).encode("utf-8"),
+                                            c.byref(self.handle), error, len(error))
+        if result != 0:
+            raise RuntimeError(error.value.decode("utf-8", "replace"))
+
+    @property
+    def running(self):
+        return bool(self.handle.value)
+
+    @property
+    def connected(self):
+        return self.running and not self.stopping and bool(self.snapshot.get("connected"))
+
+    def request_stop(self):
+        if self.running and not self.stopping:
+            self.stopping = True
+            self.snapshot["connected"] = False
+            self.dll.qarvtk_hub_stop(self.handle)
+
+    def tick(self):
+        if not self.running:
+            return self.snapshot
+        if self.stopping:
+            if self.dll.qarvtk_hub_destroy(self.handle):
+                self.handle = c.c_void_p()
+            return self.snapshot
+        result = self.dll.qarvtk_hub_poll(self.handle, self._buffer, len(self._buffer))
+        try:
+            snapshot = json.loads(self._buffer.value.decode("utf-8"))
+            if not isinstance(snapshot, dict) or not isinstance(snapshot.get("peers"), list):
+                raise ValueError("Invalid receiver list")
+            self.snapshot = snapshot
+        except (ValueError, UnicodeError) as error:
+            self.snapshot = dict(connected=False, status="Cannot read QAROS receivers: " + str(error), peers=[])
+            self.request_stop()
+            return self.snapshot
+        if result < 0 or result == 2:
+            self.request_stop()
+        return self.snapshot
 
 
 def sdk_fingerprint(root):
@@ -241,8 +434,8 @@ def library(path):
         raise RuntimeError("Host DLL ABI or SDK fingerprint does not match this plugin. Close Slicer and install the ABI 5 DLL with UPDATE-LIVE-PLUGIN.cmd.")
     if info.get("runtime_handle_only") != 1:
         raise RuntimeError("Host DLL lacks the shared-runtime cleanup fix. Close Slicer and install the current update with UPDATE-LIVE-PLUGIN.cmd.")
-    if info["header_sha256"] == EXPECTED_SDK and info.get("target_discovery") != 3:
-        raise RuntimeError("QAROS dev.3008 requires the r8.4 host bridge with peer presence discovery. Close Slicer and run UPDATE-LIVE-PLUGIN.cmd.")
+    if info["header_sha256"] in PRESENCE_SDKS and info.get("target_discovery") != 3:
+        raise RuntimeError("This QAROS SDK requires a host bridge with peer presence discovery. Close Slicer and run UPDATE-LIVE-PLUGIN.cmd.")
     signatures = {
         "create": ([c.c_char_p, c.c_char_p, c.c_char_p, c.POINTER(Placement), c.POINTER(c.c_void_p), c.c_char_p, c.c_uint32], c.c_int),
         "create_volumes": ([c.c_char_p, c.c_char_p, c.c_char_p, c.POINTER(Volume), c.c_uint32, c.POINTER(c.c_void_p), c.c_char_p, c.c_uint32], c.c_int),
@@ -262,8 +455,22 @@ def library(path):
     }
     if info.get("panel_image_region") == 1:
         signatures["panel_capture_region"] = ([c.c_void_p, c.c_void_p] + [c.c_uint32]*7 + [c.c_char_p, c.c_uint32], c.c_int)
+    if info.get("device_selection") == 1:
+        signatures.update({
+            "hub_connect": ([c.c_char_p, c.c_char_p, c.POINTER(c.c_void_p), c.c_char_p, c.c_uint32], c.c_int),
+            "hub_poll": ([c.c_void_p, c.c_char_p, c.c_uint32], c.c_int),
+            "hub_stop": ([c.c_void_p], None),
+            "hub_destroy": ([c.c_void_p], c.c_int),
+            "host_create_selected": ([c.c_void_p, c.c_char_p, c.c_char_p, c.POINTER(Volume), c.c_uint32,
+                                      c.POINTER(c.c_void_p), c.c_char_p, c.c_uint32], c.c_int),
+        })
+    if info.get("live_selection") == 1:
+        signatures["host_set_receivers"] = ([c.c_void_p, c.c_char_p, c.c_char_p, c.c_uint32], c.c_int)
+    if info.get("frame_abort") == 1:
+        signatures["host_abort"] = ([c.c_void_p, c.c_uint64], c.c_int)
     for name, (args, result) in signatures.items():
-        function = getattr(dll, "qarvtk_host_" + name)
+        symbol = "qarvtk_" + name if name.startswith(("hub_", "host_")) else "qarvtk_host_" + name
+        function = getattr(dll, symbol)
         function.argtypes, function.restype = args, result
     dll._qarvtk_info = info
     _libraries[path] = dll
@@ -280,7 +487,7 @@ def validate_target_mode(dll, target):
 
 
 class HostTransport:
-    def __init__(self, dll_path, sdk_root, target, log_folder, host_view):
+    def __init__(self, dll_path, sdk_root, target, log_folder, host_view, connection=None, selected_peers=None):
         if os.name != "nt":
             raise RuntimeError("Live QAROS transport currently requires Windows x64")
         sdk = Path(sdk_root).resolve()
@@ -293,7 +500,19 @@ class HostTransport:
             raise ValueError("All workspaces must use the same Slicer render window")
         self.dll = library(dll_path)
         validate_host_sdk(self.dll, digest)
-        validate_target_mode(self.dll, target)
+        if connection is None:
+            validate_target_mode(self.dll, target)
+        else:
+            if not connection.connected or connection.dll is not self.dll or connection.sdk_root != str(sdk):
+                raise RuntimeError("Connect to QAROS with this SDK and bridge before starting")
+            selected_peers = list(selected_peers or [])
+            selection = DeviceSelection(selected_peers)
+            selection.update(connection.snapshot)
+            if (not selected_peers or len(selected_peers) > MAX_SELECTED_TARGETS or
+                    len(set(selected_peers)) != len(selected_peers) or
+                    set(selection.selected_ids()) != set(selected_peers)):
+                raise RuntimeError("Select at least one connected receiver (at most eight)")
+            target = "selected"
         self.handle = c.c_void_p()
         self.frame = Frame()
         self.stopping = False
@@ -310,13 +529,20 @@ class HostTransport:
             (c.c_double*3)(*host.app_position), (c.c_double*4)(*host.app_orientation), host.app_scale,
             (c.c_double*3)(*host.workspace_size), (c.c_double*3)(*host.workspace_position)),
             host.name.encode("utf-8")) for host in self.hosts))
-        result = self.dll.qarvtk_host_create_volumes(str(sdk).encode("utf-8"), target.encode("utf-8"),
-            str(self.log_folder).encode("utf-8"), volumes, len(volumes), c.byref(self.handle), error, len(error))
+        if connection is None:
+            result = self.dll.qarvtk_host_create_volumes(str(sdk).encode("utf-8"), target.encode("utf-8"),
+                str(self.log_folder).encode("utf-8"), volumes, len(volumes), c.byref(self.handle), error, len(error))
+        else:
+            result = self.dll.qarvtk_host_create_selected(connection.handle, ",".join(selected_peers).encode("ascii"),
+                str(self.log_folder).encode("utf-8"), volumes, len(volumes), c.byref(self.handle), error, len(error))
+        self.connection = connection  # Keep the shared Hub wrapper alive until native teardown completes.
+        self.receiver_ids = list(selected_peers or [])
         if result != 0:
             raise RuntimeError(error.value.decode("utf-8", "replace"))
         self.diagnostics = HostTimingLog(self.log_folder)
         self.diagnostics.event("SDK " + json.dumps(dict(root=str(sdk), header_sha256=digest,
-                                                       host_dll=str(Path(dll_path).resolve()), target_mode=target)))
+                                                       host_dll=str(Path(dll_path).resolve()), target_mode=target,
+                                                       native_capabilities=self.dll._qarvtk_info)))
         self.diagnostics.event("ABI 5 independent app volumes in one session; isolated native rendering per workspace; read-only slice video panels; "
                                "workspace follows Slicer bounds and SDK placement; "
                                "same-view layout changes preserve streaming; explicit stop reasons; "
@@ -346,6 +572,24 @@ class HostTransport:
             if self.stopping:
                 return "Stopping (" + self.stop_reason + "). " + self.last_status
         return self.last_status
+
+    def set_receivers(self, peers):
+        if (not self.running or self.stopping or self._ticking or not self.connection or
+                not self.connection.connected or self.dll._qarvtk_info.get("live_selection") != 1):
+            raise RuntimeError("Receiver selection is busy or disconnected; try again")
+        peers = list(peers)
+        available = {p["id"] for p in self.connection.snapshot.get("peers", []) if p.get("available")}
+        if (len(peers) > MAX_SELECTED_TARGETS or len(set(peers)) != len(peers) or
+                any(not DeviceSelection.valid_id(key) or
+                    (key not in self.receiver_ids and key not in available) for key in peers)):
+            raise RuntimeError("Choose at most eight connected receivers")
+        self.host.window.MakeCurrent()
+        error = c.create_string_buffer(2048)
+        result = self.dll.qarvtk_host_set_receivers(self.handle, ",".join(peers).encode("ascii"), error, len(error))
+        if result != 0:
+            raise RuntimeError(error.value.decode("utf-8", "replace"))
+        self.receiver_ids = peers
+        self.diagnostics.event("RECEIVERS " + json.dumps(peers))
 
     def _check(self, result):
         if result != 0:
@@ -410,6 +654,8 @@ class HostTransport:
                 finally:
                     self.host.window.MakeCurrent()
         except Exception as error:
+            if self.running and getattr(self.dll, "_qarvtk_info", {}).get("frame_abort") == 1:
+                self.dll.qarvtk_host_abort(self.handle, self.frame.serial)
             self.diagnostics.event("ERROR: " + str(error))
             self.request_stop("Transport error: " + str(error))
             raise

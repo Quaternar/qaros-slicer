@@ -4,17 +4,27 @@ $repo = Split-Path -Parent $PSScriptRoot
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('qarvtk-update-test-' + [Guid]::NewGuid().ToString('N'))
 $sdk = Join-Path $fixture 'Program Files\Quaternar\QAROS'
 $destination = Join-Path $fixture 'package\windows-start'
-$expected = '55e6e3f48d940ca29331f0528fe475c1b7230fb19a59c31d5525c6e90b097f6c'
+$expected = 'f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52'
+# This child-process fixture updates only its private temporary checkout.
+# Simulate a closed Slicer, even if the user's independent Slicer is open.
+function Get-Process {
+    [CmdletBinding()]
+    param([string[]]$Name)
+    if (@($Name | Where-Object { $_ -notin @('Slicer', 'SlicerApp-real') }).Count) {
+        throw 'Unexpected process query in isolated updater test'
+    }
+    return @()
+}
 try {
     foreach ($dir in @('downloads', 'package\windows-start\plugins\slicer',
                        'Program Files\Quaternar\QAROS\include', 'Program Files\Quaternar\QAROS\bin')) {
         New-Item -ItemType Directory -Force -Path (Join-Path $fixture $dir) | Out-Null
     }
-    Copy-Item -LiteralPath (Join-Path $repo 'ci\sdk-headers\hub-55e6e3f4\include\qar_streaming.h') -Destination (Join-Path $sdk 'include')
+    Copy-Item -LiteralPath (Join-Path $repo 'ci\sdk-headers\hub-f3bbddfd\include\qar_streaming.h') -Destination (Join-Path $sdk 'include')
     foreach ($file in @('qar-streaming-c.dll', 'qar-runtime-launcher.exe', 'device-catalog.jsonc')) {
         New-Item -ItemType File -Path (Join-Path $sdk "bin\$file") | Out-Null
     }
-    foreach ($file in @('qarvtk-live-dev3008.zip', 'qarvtk-live-dev3008.zip.sha256')) {
+    foreach ($file in @('qarvtk-live-dev3184.zip', 'qarvtk-live-dev3184.zip.sha256')) {
         Copy-Item -LiteralPath (Join-Path $repo "downloads\$file") -Destination (Join-Path $fixture 'downloads')
     }
     $oldPlugin = Join-Path $destination 'plugins\slicer\QarosLive.py'
@@ -87,7 +97,7 @@ try {
     # A new checkout must install directly, without an old preview/starter bundle.
     $fresh = Join-Path $fixture 'fresh-checkout'
     New-Item -ItemType Directory -Force -Path $fresh | Out-Null
-    & (Join-Path $repo 'scripts\windows\Update-Live-Plugin.ps1') -RepoRoot $fresh -SdkRoot $sdk -ArchivePath (Join-Path $fixture 'downloads\qarvtk-live-dev3008.zip')
+    & (Join-Path $repo 'scripts\windows\Update-Live-Plugin.ps1') -RepoRoot $fresh -SdkRoot $sdk -ArchivePath (Join-Path $fixture 'downloads\qarvtk-live-dev3184.zip')
     $freshSlicer = Join-Path $fresh 'package\windows-start\plugins\slicer'
     $modules = @(Get-ChildItem -LiteralPath $freshSlicer -File -Filter '*.py')
     if ($modules.Count -ne 1 -or $modules[0].Name -ne 'QarosLive.py') { throw 'Fresh install did not contain exactly the Live module.' }
@@ -102,7 +112,7 @@ try {
     Set-Content -LiteralPath (Join-Path $sdk 'include\qar_streaming.h') -Value 'wrong SDK header'
     $rejected = $false
     try { & (Join-Path $repo 'scripts\windows\Update-Live-Plugin.ps1') -RepoRoot $fixture -SdkRoot $sdk }
-    catch { $rejected = $_.Exception.Message -like '*requires the installed dev.3008*' }
+    catch { $rejected = $_.Exception.Message -like '*requires the installed dev.3184*' }
     if (-not $rejected -or (Get-FileHash -LiteralPath $oldPlugin -Algorithm SHA256).Hash -ne $installedHash) {
         throw 'Incompatible SDK was not rejected before modifying the plugin.'
     }
@@ -110,5 +120,8 @@ try {
 } finally {
     Remove-Variable QarUpdateTestFailurePath, QarUpdateTestFailureTriggered -Scope Global -ErrorAction SilentlyContinue
     # ctypes loaded the shipped DLL in a child Python process, which has exited.
-    if (Test-Path -LiteralPath $fixture) { Remove-Item -LiteralPath $fixture -Recurse -Force }
+    $resolvedFixture = [IO.Path]::GetFullPath($fixture)
+    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+    if (-not $resolvedFixture.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe fixture cleanup path' }
+    if (Test-Path -LiteralPath $resolvedFixture) { Remove-Item -LiteralPath $resolvedFixture -Recurse -Force }
 }

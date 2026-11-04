@@ -1,5 +1,162 @@
 # Validation and next work
 
+## Slicer Live r8.8 candidate: ParaView transport port, 2026-11-03
+
+Ported ParaView r6c's independent cancellable receiver cycles, bounded GUI
+queue, original-context copies and per-frame GPU completion fences. The
+existing Slicer VTK 9.6 depth shader and desktop attachment code are retained.
+
+MSVC Release build and **22/22 CTest suites PASS** (8.09 s), including 240
+actual stereo GPU copies with immediate borrowed-texture reuse. Both bridge
+translation units passed syntax checks against all four older SDK profiles.
+Actual Slicer 5.12.4 / VTK 9.6.2 tests passed single-pass CT depth against the
+native VTK reference, multiple volumes, ROI, occlusion, custom shaders, resize,
+MSAA, layout changes, exact desktop restoration and slice preview fixtures.
+The candidate streamed to two real Visualizers, paused/resumed and recovered
+after a real partial GPU-copy failure. Source and workspace ids stayed the
+same across its further three Start/Stop cycles. The dedicated test slots were
+removed after the measurements.
+
+A controlled original/candidate/original comparison used the same 96³ CT and
+two receivers, with one- then two-receiver 30 s samples. GUI preparation fell
+from about 16 ms to 9–10 ms. One-receiver FPS remained in the original 20–22
+range; two-receiver total throughput rose only modestly from 31.6–32.5 to
+33.8 FPS. The p99 comparison does not establish reduced jitter. This is not a
+claim of ParaView's large FPS improvement recurring in Slicer.
+
+Windows PowerShell 5.1 installation fixtures passed package integrity, backup,
+rollback, fresh install and wrong-SDK rejection. The user's installed r8.7 was
+not replaced; r8.8 remains a draft candidate. An isolated actual Slicer process
+loaded the candidate ZIP's r8.8 module, PythonQt controls and native ABI with
+the new capabilities, without enrolling another Hub connection. The current candidate ZIP
+`downloads/qarvtk-live-dev3184.zip` SHA-256 is
+`f8aeceeb07129b38808e39f81562d4371bbd435078f6d2595dedc20f1850309e`.
+Full method, scope and metrics: [SLICER_RENDER_PERFORMANCE.md](SLICER_RENDER_PERFORMANCE.md)
+and its aggregated JSON. Raw local traces are not committed. Physical headset
+streaming and long-session display cadence remain untested here.
+
+## Slicer Live r8.7: live receiver changes and creation, 2026-10-30
+
+R8.7 keeps fixed receiver/volume routes while checkboxes change during
+streaming. New WGL contexts are prepared before publication; sender setup and
+retirement run on workers. Existing sender slots remain stable. Unchecking all
+leaves the source idle; SDK GUI panels are closed while their audience is
+empty, since an empty SDK panel audience would otherwise mean everyone.
+
+Local verification:
+
+- MSVC Release build against installed dev.3184 passed. **19/19 CTest suites
+  PASS** (11.08 s), including 17 Python device/API cases. The new native test
+  checks transactional route publication, retirement reservations, rapid
+  rechecking, slot reuse and continued work while SDK teardown is blocked.
+- Both bridge translation units passed MSVC syntax checks against the four
+  older pinned SDK profiles. Their live-selection capability is zero.
+- Real Slicer 5.12.4/PythonQt controls passed hot-add/remove with multiple
+  identically named headsets, late discovery, empty pause/resume, rollback on
+  a rejected selection, and receiver creation controls during streaming and
+  with an empty list. Device metadata in this UI test is a fixture.
+- The installed Visualizer's enabled loopback MCP endpoint successfully
+  created and started a uniquely named temporary receiver. Only that test
+  slot was then removed. Python tests cover the session header, JSON/SSE
+  replies, disabled endpoint, asynchronous execution and no automatic retry
+  after an uncertain creation result.
+- An opt-in real Slicer/QAROS GPU run submitted **600 stereo frames** to two
+  temporary Visualizers. The second was created after the first began
+  streaming. At the joint checkpoint A had 317 frames and B had 43; after
+  removing A, B reached 163. Empty selection kept the serial at 480, and
+  rechecking A delivered 120 more frames. Source peer id and native host
+  handle were identical across all five checkpoints. Both test receiver slots
+  were removed afterward; existing receiver slots were left alone. This test
+  does not exercise physical headsets or slice-panel delivery. QAROS emitted
+  network warnings; one WGL make-current error 2004 appeared during final
+  application teardown after the transport worker exited.
+- Windows PowerShell 5.1 fixtures passed fresh installation, payload hashes,
+  backup, rollback and SDK mismatch rejection. R8.7 was installed in the
+  user's managed plugin folder, preserving the previous r8.6 under
+  `package/live-backup-20261030-185056-98043f94`. An isolated actual Slicer
+  process loaded the installed r8.7 module and DLL with live-selection support.
+
+R8.7 `downloads/qarvtk-live-dev3184.zip` SHA-256 at that validation:
+`529395378609d29d01e822c16fe8ea9c34e86b0bf20203546d08d5679fbe5bd4`.
+Physical multi-headset transfer and performance require verification on the
+chosen headsets. The earlier QAROS GUI crash is not claimed fixed.
+
+## Slicer Live r8.6: persistent app tag and explicit receivers, 2026-10-30
+
+R8.6 keeps one local-app enrollment alive across render Start/Stop and chains
+the explicit `QarOnboardLocalAppTagExt` value `slicer.qaros.quaternar`. Discovery
+and rendering share that session; the Hub worker waits for all render leases
+before SDK teardown. The GUI lists exact receiver ids with checkboxes, saves
+that selection and permits up to eight receivers, including several headsets
+of the same category. Source and panel streams use those same selected peers.
+
+Local verification:
+
+- MSVC Release build against installed QAROS dev.3184 passed; **18/18 CTest
+  suites PASS** (5.13 s). New tests cover multiple same-type receivers,
+  disconnected-device rejection, exact-id selection, connection reuse and
+  asynchronous/idempotent shutdown. Existing WGL, ABI and process tests passed.
+- Both native bridge translation units passed MSVC syntax checks against all
+  four older pinned headers with their original compile-time API branches.
+  These are compile checks, not executions of old runtimes.
+- A real Slicer 5.12.4/PythonQt test passed the checkbox UI with two identically
+  named headsets, a Visualizer, disconnection, list reordering, reconnection,
+  replacement-peer rejection and controls during Start/Stop. It used a device
+  fixture and temporary Slicer settings, with no Hub enrollment.
+- Two separate real Slicer processes enrolled through the installed Hub using
+  the fixed tag. Both reported the same source peer id and completed SDK
+  teardown. Live receiver metadata was read; no stereo stream was started.
+- An immediate full Disconnect/re-enrollment within one still-live process
+  returned a different peer id from the Hub despite the same explicit tag.
+  R8.6 Start/Stop does not take that path: it retains the original connection.
+  No claim is made that every full Disconnect/reconnect reuses a peer id.
+- Windows PowerShell 5.1 updater fixtures passed fresh install, backup,
+  rollback and SDK mismatch rejection. The installed r8.5 plugin was backed
+  up before applying r8.6. Installation and payload metadata require the new
+  connection/selection capabilities in addition to ABI 5 and the SDK hash.
+
+R8.6 `downloads/qarvtk-live-dev3184.zip` SHA-256 at that validation:
+`29b23c053b5b8aaa948b2ae050e057233b012791c4e78cb251557c2a3d6150bb`.
+The physical multi-headset stereo transfer and its performance still need
+verification on the chosen devices. These tests do not establish a fix for
+the previously reported QAROS GUI crash.
+
+## Slicer Live r8.5: installed QAROS dev.3184 SDK, 2026-10-30
+
+The installed registry and changelog identify QAROS
+`0.9.0-dev.3184+2ccfb349`. Its unmodified 401627-byte header is pinned as
+`hub-f3bbddfd`, SHA-256
+`f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52`.
+R8.4 rejected this fingerprint. R8.5 updates the supported SDK registry,
+native build, package and updater while retaining exact DLL/header matching.
+
+Local Windows x64 verification:
+
+- Release host bridge compiled with MSVC 19.39.33523.0 and static C++ runtime,
+  against the installed dev.3184 header. Build and temporary files stayed on D:.
+- **17/17 CTest suites PASS** (12.48 s), including peer presence against the
+  new header, WGL callbacks, Python runtime, native DLL ABI and process control.
+- The installed-SDK smoke loaded the real `qar-streaming-c.dll` and reported
+  `0.9.0-dev.3184+2ccfb349` before library initialization; it did not join the Hub.
+- Windows PowerShell 5.1 updater fixtures passed fresh install, payload hashes,
+  old-file backup, rollback after an injected failure, preservation of custom
+  files and rejection of an incompatible SDK. Python packaging tests passed.
+- The real plugin installation was updated with the tested updater. A separate
+  Slicer **5.12.4** process with `--testing --no-main-window` discovered the
+  installed `QarosLive` module, confirmed **r8.5**, validated the installed SDK
+  and loaded the installed native DLL with ABI 5. The test used temporary
+  settings and did not open a user scene.
+
+Current archive: `downloads/qarvtk-live-dev3184.zip`, SHA-256
+`0f575b0631e25f2472829ca95a06ae442d692c6ca62f518ff7839306b79658d1`.
+The archive contains plugin code and the bridge, no QAROS runtime binaries.
+The previous installed plugin was backed up under `package/live-backup-*`.
+
+No headset/Visualizer streaming, new performance measurements or verification
+of previously reported GUI faults was performed. Four older SDK branches
+remain in the compatibility matrix; they were not rebuilt locally in this run.
+This record does not claim a passing GitHub CI run for the new revision.
+
 ## Slicer Live r8.4: supplied QAROS dev.3008 SDK, 2026-10-22
 
 The user supplied the full `QAROS.zip` installation. Its changelog identifies

@@ -61,9 +61,10 @@ public:
 class WglBinding {
   HDC dc_; HGLRC context_;
 public:
-  explicit WglBinding(const HostSharedWgl& next):dc_(wglGetCurrentDC()),context_(wglGetCurrentContext()){
-    if(!wglMakeCurrent(next.dc,next.context))throw std::runtime_error("Cannot bind shared copy context");
+  WglBinding(HDC dc,HGLRC context):dc_(wglGetCurrentDC()),context_(wglGetCurrentContext()){
+    if(!wglMakeCurrent(dc,context))throw std::runtime_error("Cannot bind host/shared OpenGL context");
   }
+  explicit WglBinding(const HostSharedWgl& next):WglBinding(next.dc,next.context){}
   ~WglBinding(){wglMakeCurrent(dc_,context_);}
 };
 }

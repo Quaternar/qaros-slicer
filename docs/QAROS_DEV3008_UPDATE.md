@@ -1,5 +1,8 @@
 # Slicer Live r8.4 with QAROS dev.3008
 
+This is the archived dev.3008 procedure. The current updater installs
+[r8.5 for dev.3184](QAROS_DEV3184_UPDATE.md).
+
 This update targets the complete **QAROS 0.9.0-dev.3008+65dc9aeb** installation
 supplied in `QAROS.zip` on 2026-10-22. Its changelog identifies the build.
 The default installation is `C:\Program Files\Quaternar\QAROS`; the updater

@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "integrations" / "slicer"))
-from qarvtk_host_runtime import (EXPECTED_SDK, HUB_2927_SDK, HUB_SDKS, SESSION_2540_SDK, LEGACY_SDK, Frame, HostTimingLog,
+from qarvtk_host_runtime import (EXPECTED_SDK, HUB_3008_SDK, HUB_2927_SDK, PRESENCE_SDKS, HUB_SDKS, SESSION_2540_SDK, LEGACY_SDK, Frame, HostTimingLog,
                                 HostTransport, library, default_sdk_path,
                                 installed_sdk_path, default_host_dll_path,
                                 validate_sdk, validate_host_sdk, validate_target_mode)
@@ -46,6 +46,28 @@ class FakeDll:
 
 
 class HostRuntimeTest(unittest.TestCase):
+    def test_failed_frame_aborts_only_after_restoring_the_host(self):
+        with tempfile.TemporaryDirectory() as folder:
+            events = []
+            def fail(*args, **kwargs):
+                try:
+                    raise RuntimeError('injected frame failure')
+                finally:
+                    events.append('restored')
+            t = self.transport(folder, fail)
+            t.dll._qarvtk_info = {'frame_abort': 1}
+            def abort(handle, serial):
+                self.assertEqual(events, ['restored'])
+                events.append('aborted')
+                self.assertEqual(serial, 1)
+                return 0
+            t.dll.qarvtk_host_abort = abort
+            with self.assertRaisesRegex(RuntimeError, 'injected frame failure'):
+                t.tick()
+            self.assertEqual(events, ['restored', 'aborted'])
+            self.assertEqual(t.dll.finished, [])
+            self.assertEqual(t.dll.stops, 1)
+
     def test_old_bridge_cannot_silently_claim_14_inch_panels(self):
         transport = object.__new__(HostTransport)
         transport.dll = MagicMock()
@@ -71,7 +93,7 @@ class HostRuntimeTest(unittest.TestCase):
                 validate_target_mode(dll, "unknown")
 
     def test_sdk_mismatch_is_rejected_before_native_creation(self):
-        for compiled in (EXPECTED_SDK, HUB_2927_SDK, SESSION_2540_SDK, LEGACY_SDK):
+        for compiled in (EXPECTED_SDK, HUB_3008_SDK, HUB_2927_SDK, SESSION_2540_SDK, LEGACY_SDK):
             dll = type("Dll", (), {"_qarvtk_info": {"header_sha256": compiled}})()
             validate_host_sdk(dll, compiled)
             other = LEGACY_SDK if compiled == EXPECTED_SDK else EXPECTED_SDK
@@ -80,7 +102,7 @@ class HostRuntimeTest(unittest.TestCase):
 
     def test_sdk_package_requires_header_runtime_and_launcher(self):
         root = Path(__file__).resolve().parents[1]
-        for fixture, expected in (("hub-55e6e3f4", EXPECTED_SDK), ("hub-a32cecd4", HUB_2927_SDK), ("session-c709c479", SESSION_2540_SDK),
+        for fixture, expected in (("hub-f3bbddfd", EXPECTED_SDK), ("hub-55e6e3f4", HUB_3008_SDK), ("hub-a32cecd4", HUB_2927_SDK), ("session-c709c479", SESSION_2540_SDK),
                                   ("session-022c40b6", LEGACY_SDK)):
             with tempfile.TemporaryDirectory() as folder:
                 sdk = Path(folder)
@@ -103,7 +125,7 @@ class HostRuntimeTest(unittest.TestCase):
                 self.assertEqual(validate_sdk(sdk), expected)
 
     def test_saved_sdk_migration_requires_matching_new_header(self):
-        fingerprints = {"old": LEGACY_SDK, "old-hub": HUB_2927_SDK, "portable": SESSION_2540_SDK, "new": EXPECTED_SDK,
+        fingerprints = {"old": LEGACY_SDK, "old-hub": HUB_2927_SDK, "previous-hub": HUB_3008_SDK, "portable": SESSION_2540_SDK, "new": EXPECTED_SDK,
                         "custom-new": EXPECTED_SDK, "future": "unsupported-new-header"}
         with patch("qarvtk_host_runtime.sdk_fingerprint", side_effect=fingerprints.get):
             self.assertEqual(default_sdk_path("old", "new"), "new")
@@ -112,6 +134,7 @@ class HostRuntimeTest(unittest.TestCase):
             self.assertEqual(default_sdk_path(None, "new"), "new")
             self.assertEqual(default_sdk_path("portable", "new"), "new")
             self.assertEqual(default_sdk_path("old-hub", "new"), "new")
+            self.assertEqual(default_sdk_path("previous-hub", "new"), "new")
             self.assertEqual(default_sdk_path("old", "future"), "future")
 
     def test_registered_installation_uses_machine_64_bit_registry(self):
@@ -162,15 +185,16 @@ class HostRuntimeTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "shared-runtime cleanup fix"):
                     library("old-cleanup-host.dll")
 
-    def test_dev3008_requires_presence_discovery_before_binding_create(self):
-        for discovery in (None, 2):
-            info = dict(host_abi=5, header_sha256=EXPECTED_SDK, modern_api=0, multi_target=1,
-                        runtime_handle_only=1, eye_size=104, frame_size=240,
-                        placement_size=112, volume_size=120, target_discovery=discovery)
-            dll = type("Dll", (), {"qarvtk_host_info": staticmethod(lambda: json.dumps(info).encode())})()
-            with patch("qarvtk_host_runtime.c.CDLL", return_value=dll):
-                with self.assertRaisesRegex(RuntimeError, "peer presence discovery"):
-                    library("no-presence-host.dll")
+    def test_presence_sdks_require_presence_discovery_before_binding_create(self):
+        for digest in PRESENCE_SDKS:
+            for discovery in (None, 2):
+                info = dict(host_abi=5, header_sha256=digest, modern_api=0, multi_target=1,
+                            runtime_handle_only=1, eye_size=104, frame_size=240,
+                            placement_size=112, volume_size=120, target_discovery=discovery)
+                dll = type("Dll", (), {"qarvtk_host_info": staticmethod(lambda: json.dumps(info).encode())})()
+                with patch("qarvtk_host_runtime.c.CDLL", return_value=dll):
+                    with self.assertRaisesRegex(RuntimeError, "peer presence discovery"):
+                        library("no-presence-host.dll")
 
     def test_preview_failure_preserves_stereo_and_restores_context(self):
         with tempfile.TemporaryDirectory() as folder:

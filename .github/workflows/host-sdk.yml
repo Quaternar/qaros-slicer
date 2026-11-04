@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sdk: [session-022c40b6, session-c709c479, hub-a32cecd4, hub-55e6e3f4]
+        sdk: [session-022c40b6, session-c709c479, hub-a32cecd4, hub-55e6e3f4, hub-f3bbddfd]
     steps:
       - uses: actions/checkout@v4
       - name: Build the VTK-free host DLL against the exact SDK
@@ -35,7 +35,7 @@ jobs:
           ctest --test-dir build-host -C Release --output-on-failure
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test the shipped DLL and Windows PowerShell 5.1 updater
-        if: matrix.sdk == 'hub-55e6e3f4'
+        if: matrix.sdk == 'hub-f3bbddfd'
         shell: powershell
         run: |
           ./tests/test_live_update.ps1

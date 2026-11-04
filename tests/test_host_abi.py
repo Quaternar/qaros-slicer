@@ -5,14 +5,20 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "integrations" / "slicer"))
-from qarvtk_host_runtime import Placement, Volume, Frame, EXPECTED_SDK, HUB_SDKS
+from qarvtk_host_runtime import Placement, Volume, Frame, EXPECTED_SDK, PRESENCE_SDKS, HUB_SDKS, APP_TAG
 
 dll = c.CDLL(sys.argv[1])
 dll.qarvtk_host_info.restype = c.c_char_p
 info = json.loads(dll.qarvtk_host_info())
-assert info == dict(host_abi=5, modern_api=0, panel_probe=0, panel_size_on_start=1, panel_image_region=1,
-    target_discovery=3 if sys.argv[2] == EXPECTED_SDK else 2, runtime_handle_only=1,
+assert info == dict(host_abi=5, independent_receiver_cycles=1, stop_detaches_audience=1, frame_abort=1, render_queue_depth_per_sender=1,
+    modern_api=0, panel_probe=0, panel_size_on_start=1, panel_image_region=1,
+    target_discovery=3 if sys.argv[2] in PRESENCE_SDKS else 2, runtime_handle_only=1,
     multi_target=int(sys.argv[2] in HUB_SDKS),
+    device_selection=int(sys.argv[2] == EXPECTED_SDK),
+    persistent_connection=int(sys.argv[2] == EXPECTED_SDK),
+    live_selection=int(sys.argv[2] == EXPECTED_SDK),
+    stable_app_tag=APP_TAG if sys.argv[2] == EXPECTED_SDK else "",
+    max_selected_targets=8 if sys.argv[2] == EXPECTED_SDK else 2,
     header_sha256=sys.argv[2],
     eye_size=104, frame_size=240, placement_size=112, volume_size=120)
 assert c.sizeof(Placement) == 112
@@ -39,6 +45,9 @@ for count in (0, 2, 33):
 dll.qarvtk_host_destroy.argtypes = [c.c_void_p]
 dll.qarvtk_host_destroy.restype = c.c_int
 assert dll.qarvtk_host_destroy(None) == 1
+dll.qarvtk_host_abort.argtypes = [c.c_void_p, c.c_uint64]
+dll.qarvtk_host_abort.restype = c.c_int
+assert dll.qarvtk_host_abort(None, 1) == -1
 for name in ("create", "capture", "capture_region", "visible", "close", "status"):
     assert getattr(dll, "qarvtk_host_panel_" + name)
 dll.qarvtk_host_panel_create.argtypes = [c.c_void_p, c.c_char_p] + [c.c_uint32]*2 + [c.c_double]*4 + [c.POINTER(c.c_void_p), c.c_char_p, c.c_uint32]
