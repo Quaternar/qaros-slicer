@@ -1,6 +1,7 @@
 name: Live host SDK compatibility
 on:
   workflow_dispatch:
+  pull_request:
   push:
     paths:
       - 'apps/**'
@@ -12,6 +13,8 @@ on:
       - 'scripts/windows/Update-Live-Plugin.ps1'
       - 'downloads/qarvtk-live-dev*.zip*'
       - 'CMakeLists.txt'
+      - 'external/qaros'
+      - '.gitmodules'
       - '.github/workflows/host-sdk.yml'
 permissions:
   contents: read
@@ -22,13 +25,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sdk: [session-022c40b6, session-c709c479, hub-a32cecd4, hub-55e6e3f4, hub-f3bbddfd]
+        # submodule: the qaros header at the pinned external/qaros revision (staging/main-with-headset).
+        sdk: [submodule, session-022c40b6, session-c709c479, hub-a32cecd4, hub-55e6e3f4, hub-f3bbddfd]
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: ${{ matrix.sdk == 'submodule' }}
       - name: Build the VTK-free host DLL against the exact SDK
         shell: pwsh
         run: |
-          cmake -S . -B build-host -A x64 -DQARVTK_BUILD_RENDERER=OFF -DQARVTK_BUILD_HOST_BRIDGE=ON "-DQAROS_SDK_ROOT=$PWD/ci/sdk-headers/${{ matrix.sdk }}"
+          $sdk = if ('${{ matrix.sdk }}' -eq 'submodule') { '' } else { "$PWD/ci/sdk-headers/${{ matrix.sdk }}" }
+          cmake -S . -B build-host -A x64 -DQARVTK_BUILD_RENDERER=OFF -DQARVTK_BUILD_HOST_BRIDGE=ON "-DQAROS_SDK_ROOT=$sdk"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build build-host --config Release --parallel 4
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
