@@ -124,3 +124,7 @@ není součástí instalace Sliceru. [Vývoj na Windows](docs/WINDOWS.md).
 SDK runtime DLL, pozvánky ani párovací identity nejsou součástí repozitáře.
 Přesné SDK hlavičky v `ci/sdk-headers/` slouží pro sestavení a testy;
 do instalovaného QAROS je nekopíruj.
+
+## Verzování
+
+Tento repozitář se řídí společným schématem verzování QAROS: [ADR-0001: One versioning scheme for every QAROS repository](https://github.com/Quaternar/qaros/blob/main/docs/adr/0001-one-versioning-scheme.md).
