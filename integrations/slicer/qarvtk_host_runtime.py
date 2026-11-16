@@ -15,11 +15,14 @@ else:
     from qarvtk_host_diagnostics import ForegroundWindow, SystemMonitor
 
 EXPECTED_SDK = "f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52"
+# QAROS 0.10.0: the header of the qaros submodule (external/qaros, staging/main-with-headset).
+STAGING_SDK = "b5528bc4cebce47b2e3ca4bc159a95520bb1a2033782e516c5125038eee07565"
 HUB_3008_SDK = "55e6e3f48d940ca29331f0528fe475c1b7230fb19a59c31d5525c6e90b097f6c"
 HUB_2927_SDK = "a32cecd4137dd3b28e0d5e0c1642a066cbea976f81b90f1f31fbac4d0fba8d4a"
 SESSION_2540_SDK = "c709c479cc6a1acc0040fb61a071cc7bc16e65bf5acb90d624d9d6b0a6fcd3c1"
 LEGACY_SDK = "022c40b670f87a066664c37daeb06da525db37fffdf5810e72cff8a5b81e677d"
-PRESENCE_SDKS = {EXPECTED_SDK, HUB_3008_SDK}
+DEVICE_SELECTION_SDKS = {EXPECTED_SDK, STAGING_SDK}
+PRESENCE_SDKS = DEVICE_SELECTION_SDKS | {HUB_3008_SDK}
 HUB_SDKS = PRESENCE_SDKS | {HUB_2927_SDK}
 SUPPORTED_SDKS = HUB_SDKS | {SESSION_2540_SDK, LEGACY_SDK}
 DEFAULT_SDK_ROOT = str(Path(os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles") or
@@ -240,7 +243,7 @@ def installed_sdk_path():
 def default_sdk_path(saved=None, preferred=None):
     """Migrate a stale portable SDK path to the installed QAROS."""
     preferred = installed_sdk_path() if preferred is None else preferred
-    if saved and sdk_fingerprint(saved) == EXPECTED_SDK:
+    if saved and sdk_fingerprint(saved) in DEVICE_SELECTION_SDKS:
         return str(saved)
     # An installed but unsupported newer SDK must report incompatibility,
     # rather than silently launching a saved legacy runtime and Visualizer.

@@ -1,13 +1,14 @@
 # SDK compatibility
 
-For the Live host bridge, CMake hashes the chosen **local**
-`include/qar_streaming.h` and selects the API from the five pinned fingerprints
-below. Unknown headers are rejected. The separate standalone sender detects
+For the Live host bridge, CMake hashes the chosen `qar_streaming.h` and selects
+the API from the pinned fingerprints below. By default the header comes from the
+`external/qaros` submodule; `QAROS_SDK_ROOT` selects another one. Unknown headers are rejected. The separate standalone sender detects
 onboarding declarations; that does not promise compatibility with arbitrary
 future V0 headers.
 
 | API generation | Source inspected | Connection path |
 | --- | --- | --- |
+| Hub, presence (default) | Submodule `external/qaros` at `3a5b301c` (`staging/main-with-headset`, QAROS 0.10.0), header `b5528bc4` | Same as dev.3184; the bridge code is unchanged. A checkout that converted the header to CRLF is hashed as LF |
 | Installed Hub, presence | Installed QAROS `0.9.0-dev.3184+2ccfb349`, header `f3bbddfd` | Stable local app tag, peer presence, live receiver selection, get-or-create volumes/panels; split WGL callbacks; current Live r8.8 |
 | Installed Hub, presence | Supplied QAROS `0.9.0-dev.3008+65dc9aeb`, header `55e6e3f4` | Same transport; archived Live r8.4 |
 | Installed Hub | Supplied QAROS `0.9.0-dev.2927+f291e404`, header `a32cecd4` | Local app enrollment, discover a running target, get-or-create volumes and panels; split WGL callbacks |
