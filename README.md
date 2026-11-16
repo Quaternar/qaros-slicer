@@ -129,7 +129,24 @@ Details and where to start in the code: [HANDOVER.md](HANDOVER.md) (Czech).
 
 ## Versioning
 
-This repository follows the shared QAROS versioning scheme: [ADR-0001: One versioning scheme for every QAROS repository](https://github.com/Quaternar/qaros/blob/main/docs/adr/0001-one-versioning-scheme.md).
+This repository follows the shared QAROS versioning scheme: [ADR-0001: One versioning scheme for every QAROS repository](https://github.com/Quaternar/qaros/blob/main/docs/adr/0001-one-versioning-scheme.md), with its rules for app repositories, [ADR-0002: QAROS apps release on every merge that changes behaviour](https://github.com/Quaternar/qaros/blob/main/docs/adr/0002-app-release-on-merge.md).
+
+- [`VERSION`](VERSION) holds the version of the last release, `0.0.0` before the first one. CMake reads it for `project()`. Never edit it by hand.
+- Every merge to `main` that changes behaviour is a release. CI (`.github/workflows/app-release.yml`) writes the new version into `VERSION`, moves the `Unreleased` entries of [CHANGELOG.md](CHANGELOG.md) under it, commits `chore(release): vX.Y.Z`, tags `vX.Y.Z` and publishes a GitHub release with that changelog section.
+- The pull request decides the bump. A label wins; without one, the title, a [Conventional Commit](https://www.conventionalcommits.org/), decides:
+
+  | Label | Title | Bump |
+  |---|---|---|
+  | `release:major` | | major |
+  | | `feat!: ...` or `BREAKING` in the title | major, minor below 1.0.0 |
+  | `release:minor` | `feat: ...` | minor |
+  | `release:patch` | `fix: ...`, `perf: ...`, `revert: ...` | patch |
+  | `release:none` | `docs`, `ci`, `chore`, `test`, `refactor`, `style`, `build` | no release |
+
+- The **Release bump** check on each pull request fails when neither defines a bump, and shows the version merging releases.
+- Add the changelog entry under `Unreleased` in the pull request. The release is at least what its entries need: `Breaking` or `Removed` a breaking bump, `Features` or `Enhancements` a minor, `Bug fixes` a patch.
+- To merge without releasing, label the pull request `release:none`; the next releasing merge ships it.
+- The Slicer module keeps its own build label (`LIVE_VERSION`, `r8.8` in `integrations/slicer/QarosLive.py`) for now.
 
 ## License
 

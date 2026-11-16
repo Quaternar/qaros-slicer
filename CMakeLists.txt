@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
-project(QAROS_VTK VERSION 0.1.0 LANGUAGES C CXX)
+# VERSION holds the version of the last release (0.0.0 before the first one); CI writes it when a
+# merge to main releases. See README.md, section "Versioning".
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" QARVTK_VERSION LIMIT_COUNT 1)
+string(STRIP "${QARVTK_VERSION}" QARVTK_VERSION)
+project(QAROS_VTK VERSION ${QARVTK_VERSION} LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
