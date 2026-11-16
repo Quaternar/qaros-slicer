@@ -19,7 +19,9 @@ on:
 
 jobs:
   app-release:
-    uses: Quaternar/qaros/.github/workflows/app-release.yml@main
+    uses: Quaternar/qaros/.github/workflows/app-release.yml@ci/app-release-on-merge
+    with:
+      tools-ref: ci/app-release-on-merge
     permissions:
       contents: write
       actions: write
