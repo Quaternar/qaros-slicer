@@ -4,7 +4,7 @@ $repo = Split-Path -Parent $PSScriptRoot
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('qarvtk-update-test-' + [Guid]::NewGuid().ToString('N'))
 $sdk = Join-Path $fixture 'Program Files\Quaternar\QAROS'
 $destination = Join-Path $fixture 'package\windows-start'
-$expected = 'f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52'
+$expected = '231b63f8bd59e126ae199223e31c5efabf36eefbca36cd4ab5fb375991837a77'
 # This child-process fixture updates only its private temporary checkout.
 # Simulate a closed Slicer, even if the user's independent Slicer is open.
 function Get-Process {
@@ -20,11 +20,12 @@ try {
                        'Program Files\Quaternar\QAROS\include', 'Program Files\Quaternar\QAROS\bin')) {
         New-Item -ItemType Directory -Force -Path (Join-Path $fixture $dir) | Out-Null
     }
-    Copy-Item -LiteralPath (Join-Path $repo 'ci\sdk-headers\hub-f3bbddfd\include\qar_streaming.h') -Destination (Join-Path $sdk 'include')
+    $sdkHeader = [IO.File]::ReadAllText((Join-Path $repo 'external\qaros\qar-streaming-c\include\qar_streaming.h')).Replace("`r`n", "`n")
+    [IO.File]::WriteAllText((Join-Path $sdk 'include\qar_streaming.h'), $sdkHeader, [Text.UTF8Encoding]::new($false))
     foreach ($file in @('qar-streaming-c.dll', 'qar-runtime-launcher.exe', 'device-catalog.jsonc')) {
         New-Item -ItemType File -Path (Join-Path $sdk "bin\$file") | Out-Null
     }
-    foreach ($file in @('qarvtk-live-dev3184.zip', 'qarvtk-live-dev3184.zip.sha256')) {
+    foreach ($file in @('qarvtk-live-0.10.0-rc.4.16.zip', 'qarvtk-live-0.10.0-rc.4.16.zip.sha256')) {
         Copy-Item -LiteralPath (Join-Path $repo "downloads\$file") -Destination (Join-Path $fixture 'downloads')
     }
     $oldPlugin = Join-Path $destination 'plugins\slicer\QarosLive.py'
@@ -97,7 +98,7 @@ try {
     # A new checkout must install directly, without an old preview/starter bundle.
     $fresh = Join-Path $fixture 'fresh-checkout'
     New-Item -ItemType Directory -Force -Path $fresh | Out-Null
-    & (Join-Path $repo 'scripts\windows\Update-Live-Plugin.ps1') -RepoRoot $fresh -SdkRoot $sdk -ArchivePath (Join-Path $fixture 'downloads\qarvtk-live-dev3184.zip')
+    & (Join-Path $repo 'scripts\windows\Update-Live-Plugin.ps1') -RepoRoot $fresh -SdkRoot $sdk -ArchivePath (Join-Path $fixture 'downloads\qarvtk-live-0.10.0-rc.4.16.zip')
     $freshSlicer = Join-Path $fresh 'package\windows-start\plugins\slicer'
     $modules = @(Get-ChildItem -LiteralPath $freshSlicer -File -Filter '*.py')
     if ($modules.Count -ne 1 -or $modules[0].Name -ne 'QarosLive.py') { throw 'Fresh install did not contain exactly the Live module.' }
@@ -112,7 +113,7 @@ try {
     Set-Content -LiteralPath (Join-Path $sdk 'include\qar_streaming.h') -Value 'wrong SDK header'
     $rejected = $false
     try { & (Join-Path $repo 'scripts\windows\Update-Live-Plugin.ps1') -RepoRoot $fixture -SdkRoot $sdk }
-    catch { $rejected = $_.Exception.Message -like '*requires the installed dev.3184*' }
+    catch { $rejected = $_.Exception.Message -like '*requires the installed QAROS 0.10.0-rc.4.16*' }
     if (-not $rejected -or (Get-FileHash -LiteralPath $oldPlugin -Algorithm SHA256).Hash -ne $installedHash) {
         throw 'Incompatible SDK was not rejected before modifying the plugin.'
     }

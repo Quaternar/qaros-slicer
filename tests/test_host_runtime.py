@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "integrations" / "slicer"))
-from qarvtk_host_runtime import (EXPECTED_SDK, HUB_3008_SDK, HUB_2927_SDK, PRESENCE_SDKS, HUB_SDKS, SESSION_2540_SDK, LEGACY_SDK, Frame, HostTimingLog,
+from qarvtk_host_runtime import (EXPECTED_SDK, HUB_3184_SDK, HUB_3008_SDK, HUB_2927_SDK, PRESENCE_SDKS, HUB_SDKS, SESSION_2540_SDK, LEGACY_SDK, Frame, HostTimingLog,
                                 HostTransport, library, default_sdk_path,
                                 installed_sdk_path, default_host_dll_path,
                                 validate_sdk, validate_host_sdk, validate_target_mode)
@@ -93,7 +93,7 @@ class HostRuntimeTest(unittest.TestCase):
                 validate_target_mode(dll, "unknown")
 
     def test_sdk_mismatch_is_rejected_before_native_creation(self):
-        for compiled in (EXPECTED_SDK, HUB_3008_SDK, HUB_2927_SDK, SESSION_2540_SDK, LEGACY_SDK):
+        for compiled in (EXPECTED_SDK, HUB_3184_SDK, HUB_3008_SDK, HUB_2927_SDK, SESSION_2540_SDK, LEGACY_SDK):
             dll = type("Dll", (), {"_qarvtk_info": {"header_sha256": compiled}})()
             validate_host_sdk(dll, compiled)
             other = LEGACY_SDK if compiled == EXPECTED_SDK else EXPECTED_SDK
@@ -102,7 +102,7 @@ class HostRuntimeTest(unittest.TestCase):
 
     def test_sdk_package_requires_header_runtime_and_launcher(self):
         root = Path(__file__).resolve().parents[1]
-        for fixture, expected in (("hub-f3bbddfd", EXPECTED_SDK), ("hub-55e6e3f4", HUB_3008_SDK), ("hub-a32cecd4", HUB_2927_SDK), ("session-c709c479", SESSION_2540_SDK),
+        for fixture, expected in (("hub-f3bbddfd", HUB_3184_SDK), ("hub-55e6e3f4", HUB_3008_SDK), ("hub-a32cecd4", HUB_2927_SDK), ("session-c709c479", SESSION_2540_SDK),
                                   ("session-022c40b6", LEGACY_SDK)):
             with tempfile.TemporaryDirectory() as folder:
                 sdk = Path(folder)
@@ -125,7 +125,7 @@ class HostRuntimeTest(unittest.TestCase):
                 self.assertEqual(validate_sdk(sdk), expected)
 
     def test_saved_sdk_migration_requires_matching_new_header(self):
-        fingerprints = {"old": LEGACY_SDK, "old-hub": HUB_2927_SDK, "previous-hub": HUB_3008_SDK, "portable": SESSION_2540_SDK, "new": EXPECTED_SDK,
+        fingerprints = {"old": LEGACY_SDK, "old-hub": HUB_2927_SDK, "previous-hub": HUB_3008_SDK, "dev3184": HUB_3184_SDK, "portable": SESSION_2540_SDK, "new": EXPECTED_SDK,
                         "custom-new": EXPECTED_SDK, "future": "unsupported-new-header"}
         with patch("qarvtk_host_runtime.sdk_fingerprint", side_effect=fingerprints.get):
             self.assertEqual(default_sdk_path("old", "new"), "new")
@@ -135,6 +135,7 @@ class HostRuntimeTest(unittest.TestCase):
             self.assertEqual(default_sdk_path("portable", "new"), "new")
             self.assertEqual(default_sdk_path("old-hub", "new"), "new")
             self.assertEqual(default_sdk_path("previous-hub", "new"), "new")
+            self.assertEqual(default_sdk_path("dev3184", "new"), "new")
             self.assertEqual(default_sdk_path("old", "future"), "future")
 
     def test_registered_installation_uses_machine_64_bit_registry(self):

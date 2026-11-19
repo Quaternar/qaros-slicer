@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 qarvtk_cxx="${QARVTK_CXX:-x86_64-w64-mingw32-g++-posix}"
 qarvtk_strip="${QARVTK_STRIP:-x86_64-w64-mingw32-strip}"
-qarvtk_sdk="${QAROS_SDK_ROOT:-ci/sdk-headers/hub-f3bbddfd}"
+qarvtk_sdk="${QAROS_SDK_ROOT:-external/qaros/qar-streaming-c}"
 qarvtk_output="${QARVTK_HOST_BUILD_DIR:-build-host-cross}"
 qarvtk_hash="$(sha256sum "$qarvtk_sdk/include/qar_streaming.h" | cut -d' ' -f1)"
 qarvtk_onboarding=0
@@ -16,6 +16,7 @@ case "$qarvtk_hash" in
   a32cecd4137dd3b28e0d5e0c1642a066cbea976f81b90f1f31fbac4d0fba8d4a) qarvtk_split=1; qarvtk_onboarding=1 ;;
   55e6e3f48d940ca29331f0528fe475c1b7230fb19a59c31d5525c6e90b097f6c) qarvtk_split=1; qarvtk_onboarding=1; qarvtk_presence=1 ;;
   f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52) qarvtk_split=1; qarvtk_onboarding=1; qarvtk_presence=1; qarvtk_devices=1 ;;
+  231b63f8bd59e126ae199223e31c5efabf36eefbca36cd4ab5fb375991837a77|b5528bc4cebce47b2e3ca4bc159a95520bb1a2033782e516c5125038eee07565) qarvtk_split=1; qarvtk_onboarding=1; qarvtk_presence=1; qarvtk_devices=1 ;;
   *) echo "Unsupported SDK header: $qarvtk_hash" >&2; exit 1 ;;
 esac
 mkdir -p "$qarvtk_output"

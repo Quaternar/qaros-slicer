@@ -14,14 +14,15 @@ if __package__:
 else:
     from qarvtk_host_diagnostics import ForegroundWindow, SystemMonitor
 
-EXPECTED_SDK = "f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52"
-# QAROS 0.10.0: the header of the qaros submodule (external/qaros, staging/main-with-headset).
+EXPECTED_SDK = "231b63f8bd59e126ae199223e31c5efabf36eefbca36cd4ab5fb375991837a77"
+HUB_3184_SDK = "f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52"
+# Earlier QAROS 0.10.0-rc.1 header retained for existing bridge builds.
 STAGING_SDK = "b5528bc4cebce47b2e3ca4bc159a95520bb1a2033782e516c5125038eee07565"
 HUB_3008_SDK = "55e6e3f48d940ca29331f0528fe475c1b7230fb19a59c31d5525c6e90b097f6c"
 HUB_2927_SDK = "a32cecd4137dd3b28e0d5e0c1642a066cbea976f81b90f1f31fbac4d0fba8d4a"
 SESSION_2540_SDK = "c709c479cc6a1acc0040fb61a071cc7bc16e65bf5acb90d624d9d6b0a6fcd3c1"
 LEGACY_SDK = "022c40b670f87a066664c37daeb06da525db37fffdf5810e72cff8a5b81e677d"
-DEVICE_SELECTION_SDKS = {EXPECTED_SDK, STAGING_SDK}
+DEVICE_SELECTION_SDKS = {EXPECTED_SDK, STAGING_SDK, HUB_3184_SDK}
 PRESENCE_SDKS = DEVICE_SELECTION_SDKS | {HUB_3008_SDK}
 HUB_SDKS = PRESENCE_SDKS | {HUB_2927_SDK}
 SUPPORTED_SDKS = HUB_SDKS | {SESSION_2540_SDK, LEGACY_SDK}
@@ -94,7 +95,7 @@ class VisualizerMcp:
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         self.headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
         self.request("initialize", dict(protocolVersion="2024-11-05", capabilities={},
-                     clientInfo=dict(name="qaros-slicer", version="r8.8")), 1)
+                     clientInfo=dict(name="qaros-slicer", version="r8.9")), 1)
         self.request("notifications/initialized", None, None)
 
     def request(self, method, params, request_id):
@@ -243,7 +244,7 @@ def installed_sdk_path():
 def default_sdk_path(saved=None, preferred=None):
     """Migrate a stale portable SDK path to the installed QAROS."""
     preferred = installed_sdk_path() if preferred is None else preferred
-    if saved and sdk_fingerprint(saved) in DEVICE_SELECTION_SDKS:
+    if saved and sdk_fingerprint(saved) == EXPECTED_SDK:
         return str(saved)
     # An installed but unsupported newer SDK must report incompatibility,
     # rather than silently launching a saved legacy runtime and Visualizer.

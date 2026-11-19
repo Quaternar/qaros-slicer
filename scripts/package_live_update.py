@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package the installed dev.3184 Live plugin and its Windows x64 bridge."""
+"""Package the QAROS 0.10.0-rc.4.16 Live plugin and its Windows x64 bridge."""
 import argparse
 import hashlib
 import json
@@ -8,9 +8,9 @@ import struct
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-SDK_SHA = 'f3bbddfdd4106a87bdcb114dc3a456b189b3f6a009a535e58592737d456a4f52'
-BUILD = 'installed-hub-update-r8.8'
-NATIVE_BUILD = 'installed-hub-update-r8.8'
+SDK_SHA = '231b63f8bd59e126ae199223e31c5efabf36eefbca36cd4ab5fb375991837a77'
+BUILD = 'installed-hub-update-r8.9'
+NATIVE_BUILD = 'installed-hub-update-r8.9'
 
 
 def package(dll, output, compiler):
@@ -20,7 +20,7 @@ def package(dll, output, compiler):
             struct.unpack_from('<H', native, offset + 4)[0] != 0x8664):
         raise ValueError('Expected a Windows x64 DLL')
     if ('"header_sha256":"' + SDK_SHA + '"').encode() not in native:
-        raise ValueError('DLL does not contain the exact dev.3184 SDK fingerprint')
+        raise ValueError('DLL does not contain the QAROS 0.10.0-rc.4.16 SDK fingerprint')
     if b'"panel_probe":0' not in native:
         raise ValueError('DLL still provides the retired panel test mode')
     if b'"panel_size_on_start":1' not in native:
@@ -47,7 +47,7 @@ def package(dll, output, compiler):
         path = 'qarvtk_host_' + name + '.py'
         payload['plugins/slicer/QarosVTKLib/' + path] = (ROOT / 'integrations/slicer' / path).read_bytes()
     payload['plugins/slicer/QarosVTKLib/qarvtk_runtime.py'] = (ROOT / 'integrations/qarvtk_runtime.py').read_bytes()
-    info = dict(sdk_version='0.9.0-dev.3184+2ccfb349', sdk_header_sha256=SDK_SHA,
+    info = dict(sdk_version='0.10.0-rc.4.16+793871a8', sdk_header_sha256=SDK_SHA,
                 host_abi=5, build=BUILD, release_stage='candidate',
                 native_build=NATIVE_BUILD, compiler=compiler,
                 slicer_modules=['QarosLive'], retired_slicer_modules=['QarosVTK'],
@@ -67,15 +67,15 @@ def package(dll, output, compiler):
                 runtime_teardown='handle_only',
                 panel_registration_snapshot='none',
                 runtime_included=False, live_gpu_tested=True,
-                live_gpu_test_scope='ct_one_two_visualizers_async_and_failure_recovery', live_headset_tested=False,
+                live_gpu_test_scope='ct_one_two_visualizers_live_selection_and_slice_panels', live_headset_tested=False,
                 files={name: hashlib.sha256(data).hexdigest() for name, data in payload.items()})
     payload['HOST_UPDATE_INFO.json'] = (json.dumps(info, indent=2) + '\n').encode()
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
-    archive_path = output / 'qarvtk-live-dev3184.zip'
+    archive_path = output / 'qarvtk-live-0.10.0-rc.4.16.zip'
     with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as archive:
         for name, data in sorted(payload.items()):
-            entry = zipfile.ZipInfo(name, (2026, 11, 3, 0, 0, 0))
+            entry = zipfile.ZipInfo(name, (2026, 11, 19, 0, 0, 0))
             entry.compress_type = zipfile.ZIP_DEFLATED
             entry.external_attr = 0o100644 << 16
             archive.writestr(entry, data)

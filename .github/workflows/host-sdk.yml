@@ -11,7 +11,7 @@ on:
       - 'ci/sdk-headers/**'
       - 'tests/**'
       - 'scripts/windows/Update-Live-Plugin.ps1'
-      - 'downloads/qarvtk-live-dev*.zip*'
+      - 'downloads/qarvtk-live-*.zip*'
       - 'CMakeLists.txt'
       - 'external/qaros'
       - '.gitmodules'
@@ -42,7 +42,7 @@ jobs:
           ctest --test-dir build-host -C Release --output-on-failure
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Test the shipped DLL and Windows PowerShell 5.1 updater
-        if: matrix.sdk == 'hub-f3bbddfd'
+        if: matrix.sdk == 'submodule'
         shell: powershell
         run: |
           ./tests/test_live_update.ps1

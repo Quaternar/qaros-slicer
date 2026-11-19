@@ -1,5 +1,31 @@
 # Validation and next work
 
+## Slicer Live r8.9 with QAROS 0.10.0 (2026-11-19)
+
+Built with MSVC 19.39 for the installed QAROS
+`0.10.0-rc.4.16+793871a8`. The public SDK submodule at `d90dd6a3` supplies
+the same header as the installation, SHA-256 `231b63f8bd59e126ae199223e31c5efabf36eefbca36cd4ab5fb375991837a77`.
+
+- All 22 CTest checks passed, including installed SDK loading, native GPU copy,
+  Python runtime and device selection, and the bridge ABI.
+- The Windows PowerShell 5.1 updater fixture passed fresh installation, backup,
+  rollback after an injected failure, and rejection of a mismatched SDK.
+- In Slicer 5.12.4 with VTK 9.6.2, a synthetic CT streamed to one Visualizer,
+  then to two after the second was created during streaming. Removing a
+  receiver, clearing the selection and resuming kept the source peer and host
+  handle. More than 700 stereo frames were submitted across these stages.
+- A separate Four-up run sent stereo frames and video for the Red, Yellow and
+  Green slice panels. The native log recorded the first delivered frame for
+  each panel. Moving the Red slice caused a new capture. Both live tests
+  destroyed their transports and removed their temporary receiver slots.
+- The first live attempt waited for QAROS approval after the runtime upgrade
+  and timed out. The user approved Slicer and the next attempt passed.
+
+Installed r8.9 into the managed local plugin folder with a backup of the
+previous files. Physical headsets and Qt input injection were not tested in
+this adaptation. Slicer reports Qt 5.15.2. Interactive slice controls are a
+separate follow-up to the existing video previews.
+
 ## Slicer Live r8.8 candidate: ParaView transport port, 2026-11-03
 
 Ported ParaView r6c's independent cancellable receiver cycles, bounded GUI
@@ -1066,5 +1092,3 @@ prototype validated.
 The file/CPU scene exchange is intentional for this first stage; the per-frame
 pixel path stays on the GPU. A future in-process adapter must match its host's
 exact VTK/Qt ABI and adopt the host's render-thread lifecycle.
-
-

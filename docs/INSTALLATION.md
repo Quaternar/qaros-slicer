@@ -7,7 +7,7 @@ odstraněn. ANARI je samostatná alternativa, kterou tento instalátor nemění.
 ## Co potřebuješ
 
 - Windows x64 se Slicerem; referenční hostitelské testy používají Slicer 5.12.4.
-- Kompletní QAROS **0.9.0-dev.3184+2ccfb349**, včetně `include/qar_streaming.h`
+- Kompletní QAROS **0.10.0-rc.4.16+793871a8**, včetně `include/qar_streaming.h`
   a původní složky `bin`, s podporovanou GPU. Přehrávač v brýlích musí mít
   stejnou verzi; pokud Hub požádá o nové spárování/schválení, dokonči ho.
 - Checkout `Quaternar/qaros-slicer`, větev `main`, například `D:\QAROS_VTK`.
@@ -91,7 +91,7 @@ Jeho nový Live plugin se připravuje v [PR #4](https://github.com/HonzaHovora/Q
 
 ## Když se něco nepovede
 
-Aktuální modul ukazuje **Live plugin r8.8**; najetím na tento řádek zjistíš
+Aktuální modul ukazuje **Live plugin r8.9**; najetím na tento řádek zjistíš
 cestu skutečně načteného souboru. Po Pull vždy spusť `UPDATE-LIVE-PLUGIN.cmd`
 se zavřeným Slicerem. Nastavení 14″ je od r8.3 předané explicitně i již
 existujícímu panelu. U náhledů se skrývají rohové anotace řezů i ve Sliceru;
@@ -101,7 +101,7 @@ po Stop se obnoví. Podrobnosti jsou v [popisu aktualizace](QAROS_DEV3184_UPDATE
 | --- | --- |
 | Modul není v nabídce | Celá složka pluginu v Additional module paths, restart Sliceru. |
 | Vidíš i starý QAROS Streaming | Odeber cestu k jiné staré kopii pluginu, nepřidávej zálohu. |
-| SDK / DLL mismatch | Kompletní QAROS dev.3184 a DLL z téhož Live balíčku; nemíchej SDK soubory. |
+| SDK / DLL mismatch | Kompletní QAROS 0.10.0-rc.4.16 a DLL z téhož Live balíčku. |
 | Start bez obrazu | Receiver nebo připojený headset, správný Stream to, schválení v Hubu. |
 | Po Stop/Start není obraz | Ulož logy aktuálního pokusu. Dřívější workaround byl vytvořit nový receiver a stream restartovat; oprava v dev.3184 zatím není ověřena. |
 | Nepodporovaný mapper nebo režim objemu | Pro Live CT/MR použij podporovaný VTK GPU Composite; ověř nejdřív jednoduchou scénu. |
