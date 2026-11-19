@@ -16,6 +16,8 @@
 #include <iomanip>
 #include <thread>
 #include <vector>
+#include <deque>
+#include <cstring>
 
 namespace qarvtk {
 namespace {
@@ -49,7 +51,7 @@ struct HostPanel {
   std::string name;
   std::size_t index{};
   unsigned width{},height{},staging{};
-  double x{},y{},z{},width_meters{};
+  double x{},y{},z{},width_meters{},height_meters{};
   HGLRC source_context{};
   std::unique_ptr<HostSharedWgl> copying,graphics;
   std::unique_ptr<GlCopy> copier;
@@ -60,6 +62,15 @@ struct HostPanel {
   std::atomic<bool> visible{true},closed{false},failed{false};
   std::atomic<uint64_t> generation{0};
   std::string state="Waiting for a rendered slice";
+  bool interactive{};
+  std::mutex input_mutex;
+  std::deque<QarvtkPanelGesture> input;
+  std::vector<QarPeerId> input_peers;
+  uint64_t input_epoch=1;
+  void input_audience(const std::vector<QarPeerId>& peers){
+    std::lock_guard<std::mutex> lock(input_mutex);
+    input_peers=peers;input.clear();++input_epoch;
+  }
   ~HostPanel(){
     if(copying)try{WglBinding binding(*copying);copier.reset();if(staging)glDeleteTextures(1,&staging);}
       catch(...){copier.release();} // Owned context destruction releases its GL resources.
@@ -93,15 +104,42 @@ struct PanelStream {
   QarStreamId stream_id=qar_stream_id_default();
   std::function<void(const std::string&)> log;
   bool created{},shown=true;
+  bool suspended{};
   bool begin_logged{},first_frame_logged{};
   uint64_t last_generation{},sent{};
   Clock::time_point last_send{};
   std::vector<QarPeerId> audience;
+  QarCancelToken* input_token{};
   PanelStream(HostPanel& p,QarSession* s,std::function<void(const std::string&)> l):panel(p),session(s),log(std::move(l)){}
   ~PanelStream(){
+    if(input_token)qar_cancel_token_handle_destroy(input_token);
+    if(panel.interactive)panel.input_audience({});
     if(created)qar_gui_panels_close_panel(session,&id);
     if(sender)qar_video_sender_handle_destroy(sender);
   }
+#if QARVTK_HOST_PANEL_INPUT
+  static void on_gesture(QarGuiPanelGesture* handle,void* context)noexcept{
+    auto& panel=*static_cast<HostPanel*>(context);
+    try{
+      QarvtkPanelGesture event{};QarPeerId peer{};
+      QarGuiPanelGestureKind kind{};QarGesturePhase phase{};
+      QarGuiPanelPoint point{},start{};QarHandedness hand{};uint8_t taps{};
+      if(!qar_result_is_success(qar_gui_panel_gesture_get_lifecycle(handle,&peer,&event.gesture_id))||
+         !qar_result_is_success(qar_gui_panel_gesture_get_classification(handle,&kind,&phase))||
+         !qar_result_is_success(qar_gui_panel_gesture_get_positions(handle,&point,&start)))return;
+      qar_gui_panel_gesture_get_handedness(handle,&hand);
+      qar_gui_panel_gesture_get_tap_count(handle,&taps);
+      std::memcpy(event.peer,peer.data,sizeof(event.peer));
+      event.kind=uint32_t(kind);event.phase=uint32_t(phase);event.hand=uint32_t(hand);
+      event.tap_count=taps;event.x=point.x_pixels;event.y=point.y_pixels;
+      std::lock_guard<std::mutex> lock(panel.input_mutex);
+      if(panel.closed||!panel.visible||std::none_of(panel.input_peers.begin(),panel.input_peers.end(),
+         [&](const auto& p){return qar_peer_id_equals(&p,&peer);}))return;
+      if(panel.input.size()>=128){panel.input.clear();++panel.input_epoch;}
+      panel.input.push_back(event);
+    }catch(...){} // A background SDK callback never propagates into the runtime.
+  }
+#endif
   void open(const std::vector<QarPeerId>& peers){
     if(peers.empty())throw std::invalid_argument("A slice panel needs a rendering target");
     log("PANEL_SENDER_CREATE name="+panel.name+" size="+std::to_string(panel.width)+"x"+std::to_string(panel.height)+" api=OpenGL views=1 eye=none format=RGBA8");
@@ -118,7 +156,7 @@ struct PanelStream {
     log("PANEL_CONTENT_REQUEST name="+panel.name+" type=stream stream="+id_text(stream_id)+" targets="+std::to_string(peers.size()));
     auto gui=qar_gui_panel_init_default();gui.header.next=&content.header;gui.display_name=panel.name.c_str();
     gui.pose.position={float(panel.x),float(panel.y),float(panel.z)};
-    gui.size={float(panel.width_meters),float(panel.width_meters*panel.height/panel.width),1.F};
+    gui.size={float(panel.width_meters),float(panel.height_meters>0?panel.height_meters:panel.width_meters*panel.height/panel.width),1.F};
     gui.visible_to_peers=peers.data();gui.visible_to_peer_count=peers.size();
 #if QARVTK_HOST_ONBOARDING_API
     QarPeerSpec* raw{};checked(qar_session_get_my_spec(session,&raw),"read panel owner");
@@ -135,6 +173,16 @@ struct PanelStream {
         " height_m="+std::to_string(gui.size.height_meters)+" diagonal_inches="+
         std::to_string(std::hypot(gui.size.width_meters,gui.size.height_meters)/.0254));
     audience=peers;
+    if(panel.interactive){
+#if QARVTK_HOST_PANEL_INPUT
+      panel.input_audience(peers);
+      checked(qar_cancel_token_create(&input_token),"create panel input cancellation");
+      checked(qar_gui_panels_subscribe_all_gesture_events(session,&id,on_gesture,&panel,input_token),"subscribe Qt panel input");
+      log("PANEL_INPUT_SUBSCRIBED name="+panel.name);
+#else
+      throw std::runtime_error("This SDK does not provide Qt panel input");
+#endif
+    }
     for(const auto& peer:audience)log("PANEL_TARGET name="+panel.name+" peer="+id_text(peer));
     log("PANEL_CREATED name="+panel.name+" id="+id_text(id));
     panel.status("Waiting for panel receiver");
@@ -147,12 +195,22 @@ struct PanelStream {
         additions.push_back(&peer);
     for(const auto& peer:audience)
       if(std::none_of(peers.begin(),peers.end(),[&](const auto& p){return qar_peer_id_equals(&p,&peer);}))removals.push_back(&peer);
-    if(additions.empty()&&removals.empty())return;
-    checked(qar_gui_panels_update_visible_to(session,&id,additions.data(),additions.size(),removals.data(),removals.size()),"update panel targets");
+    if(additions.empty()&&removals.empty()&&!suspended)return;
+    if(!additions.empty()||!removals.empty())
+      checked(qar_gui_panels_update_visible_to(session,&id,additions.data(),additions.size(),removals.data(),removals.size()),"update panel targets");
     for(const auto* peer:additions)log("PANEL_TARGET_ADDED name="+panel.name+" peer="+id_text(*peer));
     for(const auto* peer:removals)log("PANEL_TARGET_REMOVED name="+panel.name+" peer="+id_text(*peer));
     audience=peers;
+    if(panel.interactive)panel.input_audience(peers);
+    suspended=false;
     last_generation=0; // Send a static slice again for the new receiver.
+  }
+  void suspend(){
+    if(suspended)return;
+    checked(qar_gui_panels_set_state(session,&id,QAR_GUI_PANEL_STATE_HIDDEN),"hide paused panel");
+    shown=false;suspended=true;first_frame_logged=false;last_generation=0;
+    if(panel.interactive)panel.input_audience({});
+    panel.status("Waiting for a selected receiver");
   }
   void tick(){
     const bool visible=panel.visible.load();
@@ -182,9 +240,10 @@ struct PanelStream {
     }
     if(!first_frame_logged)log("PANEL_FRAME_COPIED name="+panel.name);
     checked(qar_video_sender_show_frame(sender),"show panel frame");
-    if(!first_frame_logged){log("PANEL_FIRST_FRAME name="+panel.name);first_frame_logged=true;}
+    const bool first=!first_frame_logged;
+    if(first){log("PANEL_FIRST_FRAME name="+panel.name);first_frame_logged=true;}
     last_generation=panel.generation.load();last_send=Clock::now();++sent;
-    if(sent==1||sent%30==0)panel.status("Live "+std::to_string(panel.width)+" x "+std::to_string(panel.height)+"; "+std::to_string(sent)+" frames");
+    if(first||sent%30==0)panel.status("Live "+std::to_string(panel.width)+" x "+std::to_string(panel.height)+"; "+std::to_string(sent)+" frames");
   }
 };
 }
@@ -214,7 +273,13 @@ struct HostPanels::Impl {
         {std::lock_guard<std::mutex> lock(list_mutex);for(auto& p:panels)snapshot.push_back(p.get());audience=peers;}
         streams.resize(snapshot.size());
         if(audience.empty()){
-          for(auto& stream:streams)stream.reset();
+          for(std::size_t i=0;i<streams.size();++i)if(streams[i]){
+            try{streams[i]->suspend();}
+            catch(const std::exception& e){
+              snapshot[i]->failed=true;snapshot[i]->status(std::string("Error: ")+e.what());
+              log("PANEL_ERROR "+snapshot[i]->name+": "+e.what());streams[i].reset();
+            }
+          }
           std::this_thread::sleep_for(std::chrono::milliseconds(5));continue;
         }
         for(size_t i=0;i<snapshot.size()&&!stopping;++i){
@@ -244,15 +309,15 @@ struct HostPanels::Impl {
 };
 HostPanels::HostPanels(std::function<void(const std::string&)> log):impl_(std::make_unique<Impl>()){impl_->log=std::move(log);}
 HostPanels::~HostPanels(){request_stop();join();}
-HostPanel* HostPanels::create(const char* name,unsigned w,unsigned h,double x,double y,double z,double width_meters){
+HostPanel* HostPanels::create(const char* name,unsigned w,unsigned h,double x,double y,double z,double width_meters,bool interactive,double height_meters){
   impl_->gui();
   if(impl_->stopping)throw std::runtime_error("Panel transport is stopping");
   if(!name||!*name||std::string(name).size()>128||w<16||h<16||w>768||h>768||w%2||h%2)
     throw std::invalid_argument("Panel needs a name and even 16..768 pixel dimensions");
-  for(double v:{x,y,z,width_meters})if(!std::isfinite(v)||std::abs(v)>1e12)throw std::invalid_argument("Invalid panel placement");
+  for(double v:{x,y,z,width_meters,height_meters})if(!std::isfinite(v)||std::abs(v)>1e12)throw std::invalid_argument("Invalid panel placement");
   if(width_meters<=0)throw std::invalid_argument("Invalid panel width");
   {std::lock_guard<std::mutex> lock(impl_->list_mutex);if(impl_->panels.size()>=16)throw std::runtime_error("Slice views were recreated too often; restart streaming to recreate panels");}
-  auto p=std::make_unique<HostPanel>();p->name=name;p->width=w;p->height=h;p->x=x;p->y=y;p->z=z;p->width_meters=width_meters;p->initialize();
+  auto p=std::make_unique<HostPanel>();p->name=name;p->width=w;p->height=h;p->x=x;p->y=y;p->z=z;p->width_meters=width_meters;p->height_meters=height_meters;p->interactive=interactive;p->initialize();
   auto* result=p.get();{std::lock_guard<std::mutex> lock(impl_->list_mutex);p->index=impl_->panels.size();impl_->panels.push_back(std::move(p));}return result;
 }
 int HostPanels::capture(HostPanel* handle,unsigned texture,unsigned w,unsigned h,const ColorRegion* region){
@@ -266,7 +331,34 @@ int HostPanels::capture(HostPanel* handle,unsigned texture,unsigned w,unsigned h
   {WglBinding binding(*p.copying);p.copier->copy_color({texture,0,w,h},p.stage,false,true,region);p.copier->finish();}
   ++p.generation;return 1;
 }
-void HostPanels::visible(HostPanel* p,bool visible){impl_->get(p).visible=visible;}
+int HostPanels::capture_rgba(HostPanel* handle,const uint8_t* pixels,unsigned w,unsigned h,unsigned stride){
+  auto& p=impl_->get(handle);
+  if(!p.interactive||!pixels||w!=p.width||h!=p.height||stride<w*4||stride%4)
+    throw std::invalid_argument("Invalid Qt panel RGBA buffer");
+  if(p.failed)throw std::runtime_error(status(handle));
+  if(impl_->stopping||p.closed||!p.visible)return 0;
+  std::unique_lock<std::mutex> lock(p.gpu,std::try_to_lock);if(!lock)return 0;
+  WglBinding binding(*p.copying);
+  glBindTexture(GL_TEXTURE_2D,p.staging);
+  glPixelStorei(GL_UNPACK_ALIGNMENT,4);glPixelStorei(GL_UNPACK_ROW_LENGTH,stride/4);
+  glTexSubImage2D(GL_TEXTURE_2D,0,0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,pixels);
+  glPixelStorei(GL_UNPACK_ROW_LENGTH,0);
+  if(glGetError()!=GL_NO_ERROR)throw std::runtime_error("Cannot upload Qt panel image");
+  glFinish();++p.generation;return 1;
+}
+int HostPanels::gestures(HostPanel* handle,QarvtkPanelGesture* out,unsigned capacity,uint64_t& epoch){
+  auto& p=impl_->get(handle);
+  if(!out||!capacity||capacity>128)throw std::invalid_argument("Invalid panel input buffer");
+  std::lock_guard<std::mutex> lock(p.input_mutex);epoch=p.input_epoch;
+  if(p.closed||!p.visible){p.input.clear();return 0;}
+  const auto count=std::min<std::size_t>(capacity,p.input.size());
+  for(std::size_t i=0;i<count;++i){out[i]=p.input.front();p.input.pop_front();}
+  return int(count);
+}
+void HostPanels::visible(HostPanel* handle,bool visible){
+  auto& p=impl_->get(handle);p.visible=visible;
+  if(!visible){std::lock_guard<std::mutex> lock(p.input_mutex);p.input.clear();++p.input_epoch;}
+}
 void HostPanels::close(HostPanel* p){impl_->get(p).closed=true;}
 std::string HostPanels::status(HostPanel* handle){auto& p=impl_->get(handle);std::lock_guard<std::mutex> lock(p.status_mutex);return p.state;}
 void HostPanels::start(QarSession* session,const std::vector<QarPeerId>& peers){

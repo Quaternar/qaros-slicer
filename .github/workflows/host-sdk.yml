@@ -31,11 +31,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: ${{ matrix.sdk == 'submodule' }}
+      - name: Install the Qt SDK matching Slicer
+        if: matrix.sdk == 'submodule'
+        shell: pwsh
+        run: |
+          python -m pip install aqtinstall==3.3.0
+          python -m aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 -O "$env:RUNNER_TEMP/Qt" --archives qtbase
       - name: Build the VTK-free host DLL against the exact SDK
         shell: pwsh
         run: |
           $sdk = if ('${{ matrix.sdk }}' -eq 'submodule') { '' } else { "$PWD/ci/sdk-headers/${{ matrix.sdk }}" }
-          cmake -S . -B build-host -A x64 -DQARVTK_BUILD_RENDERER=OFF -DQARVTK_BUILD_HOST_BRIDGE=ON "-DQAROS_SDK_ROOT=$sdk"
+          $qt = if ('${{ matrix.sdk }}' -eq 'submodule') { 'ON' } else { 'OFF' }
+          cmake -S . -B build-host -A x64 -DQARVTK_BUILD_RENDERER=OFF -DQARVTK_BUILD_HOST_BRIDGE=ON "-DQARVTK_BUILD_QT_CONTROLS=$qt" "-DCMAKE_PREFIX_PATH=$env:RUNNER_TEMP/Qt/5.15.2/msvc2019_64" "-DQAROS_SDK_ROOT=$sdk"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build build-host --config Release --parallel 4
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -50,5 +57,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: live-host-${{ matrix.sdk }}
-          path: build-host/Release/qarvtk-host.dll
+          path: build-host/Release/qarvtk-*.dll
           retention-days: 14

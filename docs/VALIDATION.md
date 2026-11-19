@@ -1,5 +1,31 @@
 # Validation and next work
 
+## Qt slice controls in Slicer Live r8.10 (2026-11-19)
+
+A separate Qt 5.15.2 bridge uses the official qaros-qt core at `14c18c00`.
+Its sender adapter reuses the existing host session and selected receiver
+list. Background SDK callbacks copy panel gestures into a bounded queue.
+The Qt thread maps these through qaros-qt into Qt events, and the Python
+integration applies values to Slicer's existing slice offset sliders.
+Changes made in Slicer update the AR controls on the next timer turn.
+
+- The real Slicer/SDK test passed stereo streaming, hot receiver selection,
+  empty selection and resume, three slice video panels, and bidirectional
+  synchronization of all three Qt sliders, including negative offsets.
+  Empty selection with the Qt panel active also resumed its slice videos.
+- A live follow-up recorded `PANEL_INPUT_SUBSCRIBED` and the first delivered
+  frame of the controls panel through the installed QAROS 0.10 runtime.
+- The main bridge's 22 CTest checks and the PowerShell 5.1 updater fixture
+  passed. The pinned Qt library passed 790 tests, with two Qt 6 Windows 11
+  style tests skipped on Qt 5.15.2.
+- An initial live attempt received no render requests because the minimized
+  Hub had paused its receiver. The final live test temporarily disabled that
+  pause policy and restored its original value during cleanup.
+
+Physical headset gestures remain to be verified. The automated Slicer check
+changes actual Qt slider values and verifies MRML synchronization. It does
+not substitute for a hand-tracking test in the glasses.
+
 ## Slicer Live r8.9 with QAROS 0.10.0 (2026-11-19)
 
 Built with MSVC 19.39 for the installed QAROS

@@ -15,6 +15,18 @@ odstraněn. ANARI je samostatná alternativa, kterou tento instalátor nemění.
 Pro instalaci hotového balíčku nepotřebuješ Python, VTK, vcpkg ani kompilátor.
 Použije se Python a renderer dodaný se Slicerem. Nepřepisuj jednotlivé soubory SDK.
 
+## Posouvání řezů z brýlí
+
+Před spuštěním přenosu nech zapnuté **Show slice image panels** a
+**Show Qt slice controls in glasses**. Ve Four-up se vedle náhledů objeví
+panel **Slice controls**. Tažením posuvníku Red, Yellow nebo Green změníš
+polohu odpovídajícího řezu. Pole s hodnotou ukazuje milimetry a nabízí také
+krokování šipkami. Změna se přenese do Sliceru a změna ve Sliceru zpět do
+panelu. Ovládání se vztahuje na receivery vybrané v **Stream to**.
+
+Qt ovladače používají Qt 5.15.2 dodané se Slicerem 5.12.4. Balíček obsahuje
+samostatnou knihovnu `qarvtk-qt-controls.dll` a licenci knihovny qaros-qt.
+
 ## První instalace i aktualizace
 
 1. Zastav streaming a zavři Slicer, aby nedržel DLL.
@@ -91,7 +103,7 @@ Jeho nový Live plugin se připravuje v [PR #4](https://github.com/HonzaHovora/Q
 
 ## Když se něco nepovede
 
-Aktuální modul ukazuje **Live plugin r8.9**; najetím na tento řádek zjistíš
+Aktuální modul ukazuje **Live plugin r8.10**; najetím na tento řádek zjistíš
 cestu skutečně načteného souboru. Po Pull vždy spusť `UPDATE-LIVE-PLUGIN.cmd`
 se zavřeným Slicerem. Nastavení 14″ je od r8.3 předané explicitně i již
 existujícímu panelu. U náhledů se skrývají rohové anotace řezů i ve Sliceru;

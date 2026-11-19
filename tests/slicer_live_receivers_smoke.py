@@ -14,19 +14,22 @@ import traceback
 import uuid
 import numpy as np
 import slicer
+import qt
 
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root / 'package/windows-start/plugins/slicer'))
 import QarosLive
 QarosLive.QarosLiveWidget.autoConnect = False
 from QarosVTKLib.qarvtk_host_runtime import HubConnection, HostTransport, VisualizerMcp, installed_sdk_path
-from QarosVTKLib.qarvtk_host_view import create_host_views
+from QarosVTKLib.qarvtk_host_view import create_host_views, workspace_envelope
+from QarosVTKLib.qarvtk_host_panels import SlicePanels
 
 
 def run():
     assert slicer.app.layoutManager(), 'This GPU test requires the main Slicer window'
-    assert QarosLive.LIVE_VERSION == 'r8.9', 'Install r8.9 before this test'
+    assert QarosLive.LIVE_VERSION == 'r8.10', 'Install r8.10 before this test'
     client = VisualizerMcp()
+    pause_policy = client.call('viz_state', {})['structuredContent']['stream_pause_policy']
     hub = transport = None
     created, records = [], []
     def unpack(result):
@@ -59,10 +62,11 @@ def run():
     log_folder = root / 'build-host-dev3184/live-receivers-smoke'
     log_folder.mkdir(parents=True, exist_ok=True)
     try:
+        client.call('viz_stream_pause_policy', dict(policy='never'))
         first = receiver(name + ' A')
         hub = HubConnection(root / 'package/windows-start/Release/qarvtk-host.dll', installed_sdk_path(), log_folder / 'hub')
         wait(lambda: hub.connected and any(p['id'] == first and p['available'] for p in hub.snapshot['peers']), 'First receiver discovery')
-        slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUp3DView)
+        slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
         view = slicer.app.layoutManager().threeDWidget(0).threeDView()
         volume = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLScalarVolumeNode', 'Live receiver test')
         z, y, x = np.indices((24, 24, 24))
@@ -106,6 +110,39 @@ def run():
         transport.set_receivers([first])
         wait(lambda: frames(name + ' A') >= 3, 'Idle receiver resumes')
         record('receiver resumed')
+        slicer.util.setSliceViewerLayers(background=volume)
+        slicer.util.resetSliceViews()
+        position, size = workspace_envelope(hosts)
+        transport.panels = SlicePanels(slicer.app.layoutManager(), transport, position, size, controls=True)
+        controls = transport.panels.controls
+        wait(lambda: len(transport.panels.sources) == 3, 'Three slice previews')
+        panel = next(w for w in qt.QApplication.topLevelWidgets() if w.objectName == 'qarvtkSliceControls')
+        native_sliders = [panel.findChild(qt.QSlider, 'sliceSlider' + str(i)) for i in range(3)]
+        for i, native in enumerate(native_sliders):
+            original = controls.slider(i)
+            requested = original.minimum + (original.maximum-original.minimum)*.35
+            original.value = requested
+            pump()
+            expected = round((original.value-original.minimum)/(original.maximum-original.minimum)*10000)
+            assert abs(native.value-expected) <= 1, (i, native.value, expected)
+            native.setSliderDown(True)
+            native.value = 6500
+            native.setSliderDown(False)
+            pump()
+            requested = original.minimum + (original.maximum-original.minimum)*.65
+            assert abs(original.value-requested) < .01, (i, original.value, requested)
+        wait(lambda: all(transport.panel_status(s.handle).startswith('Live ') for s in transport.panels.sources.values()),
+             'Live slice video panels')
+        assert not transport.panels.errors, transport.panels.errors
+        panel.grab().save(str(log_folder / 'qt-slice-controls.png'))
+        record('Qt slice controls synchronized in both directions')
+        transport.set_receivers([])
+        wait(lambda: 'Streaming is idle' in transport.status(), 'Qt controls pause with empty selection')
+        transport.set_receivers([first])
+        wait(lambda: frames(name + ' A') >= 3 and all(transport.panel_status(s.handle).startswith('Live ')
+             for s in transport.panels.sources.values()), 'Slice panels resume after empty selection')
+        assert transport.panels.controls is controls
+        record('Qt controls and slice panels resumed')
         assert len({r['source_peer'] for r in records}) == 1
         assert len({r['native_handle'] for r in records}) == 1
     finally:
@@ -124,6 +161,9 @@ def run():
             try:
                 assert unpack(client.call('viz_receiver_remove', dict(slot_id=slot))).get('ok')
             except Exception as error: failures.append(str(error))
+        try:
+            client.call('viz_stream_pause_policy', dict(policy=pause_policy))
+        except Exception as error: failures.append(str(error))
         (log_folder / 'result.json').write_text(json.dumps(records, indent=2), encoding='utf-8')
         if failures: raise RuntimeError('Cleanup: ' + '; '.join(failures))
 
@@ -134,5 +174,5 @@ except Exception:
     traceback.print_exc()
     slicer.app.exit(1)
 else:
-    print('PASS: actual stereo frames, hot-created second receiver, concurrent frames, remove, empty pause/resume; same source and host; test slots removed', flush=True)
+    print('PASS: stereo streams, live receiver selection, Qt slice controls in both directions and slice video; test slots removed', flush=True)
     slicer.app.exit(0)

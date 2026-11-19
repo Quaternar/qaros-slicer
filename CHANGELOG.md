@@ -9,6 +9,15 @@ behaviour is released at once: CI moves the `Unreleased` entries under the new v
 
 ## [Unreleased]
 
+### Features
+
+- Slicer Live r8.10 adds a Qt **Slice controls** panel with Red, Yellow and Green
+  sliders and millimetre values. AR gestures reach Qt widgets through qaros-qt,
+  and values synchronize with Slicer's own slice offset sliders. Enable
+  **Show Qt slice controls in glasses** together with slice image panels before
+  starting a stream. The prebuilt package includes a separate bridge for
+  Slicer's Qt 5.15.2.
+
 ### Enhancements
 
 - Support the installed QAROS 0.10.0-rc.4.16 runtime in Slicer Live r8.9. The

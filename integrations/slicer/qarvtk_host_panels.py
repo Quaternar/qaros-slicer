@@ -1,8 +1,8 @@
-"""Read-only slice previews from completed VTK frames, including live video.
+"""Slice previews from completed VTK frames, including live video.
 
-No extra renders, screen capture, image readback or input forwarding. Image
-bounds drive a GPU crop; corner labels are hidden while a preview owns a view.
+Image bounds drive a GPU crop. Corner labels are hidden while a preview owns a view.
 The latest rendered image replaces any older pending image.
+Optional Qt controls use the existing slice offset sliders through a separate panel.
 """
 from time import perf_counter
 from math import hypot, floor, ceil, isfinite
@@ -204,7 +204,7 @@ class SlicePreview:
 
 
 class SlicePanels:
-    def __init__(self, layout, sink, workspace_position, workspace_size, fps=15, clock=perf_counter):
+    def __init__(self, layout, sink, workspace_position, workspace_size, fps=15, clock=perf_counter, controls=False):
         if fps not in (5, 10, 15, 30):
             raise ValueError("Slice preview FPS must be 5, 10, 15 or 30")
         self.layout, self.sink = layout, sink
@@ -220,6 +220,15 @@ class SlicePanels:
         self.copy_ms = 0.
         self.source_sizes = {}
         self.status = "Waiting for visible slice views"
+        self.controls = None
+        if controls:
+            if __package__:
+                from .qarvtk_host_controls import SliceControls
+            else:
+                from qarvtk_host_controls import SliceControls
+            x, y, z = workspace_position
+            # Below the preview row, keeping the controls beside the image panels.
+            self.controls = SliceControls(layout, sink, (x, y-workspace_size[1]*.5-.06-PANEL_DIAGONAL_METERS-.04, z+.05))
 
     def _error(self, name, error):
         self.errors[name] = str(error)
@@ -286,6 +295,13 @@ class SlicePanels:
     def tick(self):
         if self.closed:
             return
+        if self.controls:
+            try:
+                self.controls.tick()
+            except Exception as error:
+                self.errors["Controls"] = str(error)
+                self.controls.close()
+                self.controls = None
         now = self.clock()
         if now >= self.next_refresh:
             self.refresh()
@@ -326,6 +342,9 @@ class SlicePanels:
 
     def close(self):
         self.closed = True
+        if self.controls:
+            self.controls.close()
+            self.controls = None
         for source in self.sources.values():
             source.close()
         self.sources.clear()

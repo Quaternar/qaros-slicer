@@ -9,11 +9,11 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SDK_SHA = '231b63f8bd59e126ae199223e31c5efabf36eefbca36cd4ab5fb375991837a77'
-BUILD = 'installed-hub-update-r8.9'
-NATIVE_BUILD = 'installed-hub-update-r8.9'
+BUILD = 'installed-hub-update-r8.10'
+NATIVE_BUILD = 'installed-hub-update-r8.10'
 
 
-def package(dll, output, compiler):
+def package(dll, qt_dll, output, compiler):
     native = Path(dll).read_bytes()
     offset = struct.unpack_from('<I', native, 0x3c)[0]
     if (native[:2] != b'MZ' or native[offset:offset + 4] != b'PE\0\0' or
@@ -40,10 +40,22 @@ def package(dll, output, compiler):
             raise ValueError('DLL lacks persistent connected-receiver selection')
     if ('Host build: ' + NATIVE_BUILD + ' (ABI 5)').encode() not in native:
         raise ValueError('DLL does not match this Live update build')
+    if b'"panel_input":1' not in native:
+        raise ValueError('DLL does not provide copied GUI panel input')
+    qt_native = Path(qt_dll).read_bytes()
+    if len(qt_native) < 64 or qt_native[:2] != b'MZ':
+        raise ValueError('Expected a Windows Qt controls DLL')
+    qt_offset = struct.unpack_from('<I', qt_native, 0x3c)[0]
+    if (qt_native[qt_offset:qt_offset + 4] != b'PE\0\0' or
+            struct.unpack_from('<H', qt_native, qt_offset + 4)[0] != 0x8664 or
+            b'qarvtk_qt_controls_create' not in qt_native or b'qarvtk_qt_version' not in qt_native):
+        raise ValueError('Expected a Windows x64 Qt slice controls DLL')
     payload = {'Release/qarvtk-host.dll': native,
+               'Release/qarvtk-qt-controls.dll': qt_native,
+               'licenses/qaros-qt-LICENSE.txt': (ROOT / 'external/qaros-qt/LICENSE').read_bytes(),
                'plugins/slicer/QarosLive.py': (ROOT / 'integrations/slicer/QarosLive.py').read_bytes(),
                'plugins/slicer/QarosVTKLib/__init__.py': b'"""Private support package, not a Slicer module."""\n'}
-    for name in ('runtime', 'view', 'gpu', 'panels', 'diagnostics'):
+    for name in ('runtime', 'view', 'gpu', 'panels', 'controls', 'diagnostics'):
         path = 'qarvtk_host_' + name + '.py'
         payload['plugins/slicer/QarosVTKLib/' + path] = (ROOT / 'integrations/slicer' / path).read_bytes()
     payload['plugins/slicer/QarosVTKLib/qarvtk_runtime.py'] = (ROOT / 'integrations/qarvtk_runtime.py').read_bytes()
@@ -62,12 +74,13 @@ def package(dll, output, compiler):
                 performance_fps_gain_established=False,
                 performance_report='docs/SLICER_RENDER_PERFORMANCE.md',
                 receiver_creation='visualizer_mcp',
+                qt_slice_controls=1, qt_version='5.15.2',
                 stable_app_tag='slicer.qaros.quaternar', max_selected_targets=8,
                 max_visualizer_targets=8, max_headset_targets=8,
                 runtime_teardown='handle_only',
                 panel_registration_snapshot='none',
                 runtime_included=False, live_gpu_tested=True,
-                live_gpu_test_scope='ct_one_two_visualizers_live_selection_and_slice_panels', live_headset_tested=False,
+                live_gpu_test_scope='ct_two_visualizers_live_selection_slice_video_qt_controls_bidirectional', live_headset_tested=False,
                 files={name: hashlib.sha256(data).hexdigest() for name, data in payload.items()})
     payload['HOST_UPDATE_INFO.json'] = (json.dumps(info, indent=2) + '\n').encode()
     output = Path(output)
@@ -90,7 +103,8 @@ def package(dll, output, compiler):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dll', type=Path, required=True)
+    parser.add_argument('--qt-dll', type=Path, required=True)
     parser.add_argument('--output', type=Path, default=ROOT / 'downloads')
     parser.add_argument('--compiler', required=True)
     args = parser.parse_args()
-    package(args.dll, args.output, args.compiler)
+    package(args.dll, args.qt_dll, args.output, args.compiler)

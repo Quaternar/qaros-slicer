@@ -1,7 +1,8 @@
 # Lokální vývoj Slicer bridge na Windows
 
-Aktuální balíček r8.9 používá QAROS 0.10.0-rc.4.16. Sestavuje se stejným
-příkazem CMake s `QAROS_SDK_ROOT` nastaveným na celou instalaci QAROSu.
+Aktuální balíček r8.10 používá QAROS 0.10.0-rc.4.16. Qt ovladače se sestavují
+s `-DQARVTK_BUILD_QT_CONTROLS=ON` a `CMAKE_PREFIX_PATH` nastaveným na SDK Qt
+5.15.2 pro MSVC x64. `QAROS_SDK_ROOT` ukazuje na celou instalaci QAROSu.
 [Ověření](VALIDATION.md) obsahuje výsledky z 19. 11. 2026.
 Níže je původní záznam sestavení r8.4 z 22. 10. 2026.
 

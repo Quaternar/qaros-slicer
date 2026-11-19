@@ -392,7 +392,7 @@ struct QarvtkHost {
     std::filesystem::create_directories(std::filesystem::u8path(log_folder));
     log.open(std::filesystem::u8path(log_folder)/"host-bridge.log",std::ios::app);
     if(!log)throw std::runtime_error("Cannot open host bridge log");
-    log<<"Host build: installed-hub-update-r8.9 (ABI 5); SDK header " QARVTK_HOST_SDK_HASH<<std::endl;
+    log<<"Host build: installed-hub-update-r8.10 (ABI 5); SDK header " QARVTK_HOST_SDK_HASH<<std::endl;
     log<<"SDK root: "<<sdk_root<<std::endl;
     log<<"Target mode: "<<target<<"; workspaces="<<volumes.size()<<std::endl;
     if(!asynchronous_copies)copying=std::make_unique<qarvtk::HostSharedWgl>(dc,host_context);
@@ -1247,6 +1247,12 @@ const char* qarvtk_host_info(){
 #else
     "0,\"persistent_connection\":0,\"live_selection\":0,\"stable_app_tag\":\"\",\"max_selected_targets\":2"
 #endif
+    ",\"panel_input\":"
+#if QARVTK_HOST_PANEL_INPUT
+    "1"
+#else
+    "0"
+#endif
     ",\"header_sha256\":\"" QARVTK_HOST_SDK_HASH "\",\"eye_size\":104,\"frame_size\":240,\"placement_size\":112,\"volume_size\":120}";
 }
 int qarvtk_hub_connect(const char* sdk,const char* folder,QarvtkHub** result,char* error,uint32_t size){
@@ -1465,6 +1471,28 @@ void qarvtk_host_panel_close(QarvtkHost* h,QarvtkHostPanel* p){
 void qarvtk_host_panel_status(QarvtkHost* h,QarvtkHostPanel* p,char* text,uint32_t size){
   try{message(text,size,h&&h->panels?h->panels->status(reinterpret_cast<qarvtk::HostPanel*>(p)):"Stopped");}
   catch(const std::exception& e){message(text,size,e.what());}
+}
+int qarvtk_host_control_panel_create(QarvtkHost* h,const char* name,uint32_t w,uint32_t height,
+    double x,double y,double z,double width_meters,double height_meters,QarvtkHostPanel** out,char* error,uint32_t size){
+  if(out)*out=nullptr;
+  try{
+    if(!h||!h->panels||!out||h->stopping)throw std::invalid_argument("No active Qt panel transport");
+    if(height_meters<=0)throw std::invalid_argument("Invalid control panel height");
+    *out=reinterpret_cast<QarvtkHostPanel*>(h->panels->create(name,w,height,x,y,z,width_meters,true,height_meters));return 0;
+  }catch(const std::exception& e){message(error,size,e.what());return -1;}
+}
+int qarvtk_host_panel_capture_rgba(QarvtkHost* h,QarvtkHostPanel* p,const uint8_t* pixels,
+    uint32_t w,uint32_t height,uint32_t stride,char* error,uint32_t size){
+  try{
+    if(!h||!h->panels||h->stopping)return 0;
+    return h->panels->capture_rgba(reinterpret_cast<qarvtk::HostPanel*>(p),pixels,w,height,stride);
+  }catch(const std::exception& e){message(error,size,e.what());return -1;}
+}
+int qarvtk_host_panel_gestures(QarvtkHost* h,QarvtkHostPanel* p,QarvtkPanelGesture* out,uint32_t capacity,uint64_t* epoch){
+  try{
+    if(!h||!h->panels||!epoch||h->stopping)return -1;
+    return h->panels->gestures(reinterpret_cast<qarvtk::HostPanel*>(p),out,capacity,*epoch);
+  }catch(...){return -1;}
 }
 
 }
