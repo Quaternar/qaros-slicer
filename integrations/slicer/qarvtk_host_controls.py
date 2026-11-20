@@ -44,8 +44,9 @@ class SliceControls:
         self.names = []
         if (sink.dll._qarvtk_info.get("panel_input") != 1 or
                 sink.dll._qarvtk_info.get("panel_pipeline_audience") != 1 or
-                sink.dll._qarvtk_info.get("panel_drag_origin") != 1):
-            raise RuntimeError("Install the r8.13 bridge for Qt slice controls")
+                sink.dll._qarvtk_info.get("panel_drag_origin") != 1 or
+                sink.dll._qarvtk_info.get("panel_motion_coalescing") != 1):
+            raise RuntimeError("Install the r8.14 bridge for Qt slice controls")
         path = Path(sink.dll._name).with_name("qarvtk-qt-controls.dll")
         self.dll = controls_library(path)
         sink.host.window.MakeCurrent()
@@ -173,6 +174,14 @@ class SequenceControls:
         layout.addLayout(row)
         self.seek = slicer.qMRMLSequenceBrowserSeekWidget(self.widget)
         self.seek.objectName = "sequenceSeek"
+        self.seek_slider = self.seek.findChild(qt.QSlider, "slider_IndexValue")
+        if not self.seek_slider:
+            raise RuntimeError("Slicer's sequence seek widget has no time slider")
+        # A proxy-volume replacement can be expensive. Keep scrubbing local
+        # to Qt and let the original MRML connection load only the release value.
+        self.seek_slider.setTracking(False)
+        self.seek_slider.setMinimumHeight(48)
+        self.seek_slider.toolTip = "Drag to choose a frame; release to load it"
         layout.addWidget(self.seek)
         self.selector.connect("currentNodeChanged(vtkMRMLNode*)", self.bind)
         # Prefer the sequence whose proxy is already rendered in this scene.

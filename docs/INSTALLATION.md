@@ -33,6 +33,9 @@ Vyber příslušnou sekvenci a použij původní Qt ovladače Sliceru pro
 přehrávání/pauzu, krokování, první/poslední snímek, rychlost a časový posuvník.
 **Stop** pozastaví přehrávání a vrátí první snímek. Přehrává se stejný
 Sequence Browser jako ve Sliceru, bez kopie dat a dalšího streamu ovladačů.
+Při tažení časového posuvníku se posouvá ukazatel; vybraný snímek se načte
+až po puštění. Tím se během tažení opakovaně nevyměňuje celý objem. Posuvníky
+řezů zachovávají průběžný náhled a společná fronta vynechává zastaralé pohyby.
 
 Dotyk panelu se předává do Qt jako vstup myši. Vzdálené ukazování a svírání
 prstů tato integrace nepřevádí na tažení. Stav **Qt** v pluginu uvádí počet
@@ -133,7 +136,7 @@ Jeho nový Live plugin se připravuje v [PR #4](https://github.com/HonzaHovora/Q
 
 ## Když se něco nepovede
 
-Aktuální modul ukazuje **Live plugin r8.13**; najetím na tento řádek zjistíš
+Aktuální modul ukazuje **Live plugin r8.14**; najetím na tento řádek zjistíš
 cestu skutečně načteného souboru. Po Pull vždy spusť `UPDATE-LIVE-PLUGIN.cmd`
 se zavřeným Slicerem. Nastavení 14″ je od r8.3 předané explicitně i již
 existujícímu panelu. U náhledů se skrývají rohové anotace řezů i ve Sliceru;

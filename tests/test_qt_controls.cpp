@@ -48,6 +48,21 @@ int qarvtk_host_panel_gestures(QarvtkHost *, QarvtkHostPanel *, QarvtkPanelGestu
 }
 }
 #if defined(QARVTK_QT_CONTROLS_FIXTURE)
+extern "C" __declspec(dllexport) void qarvtk_test_panel_gesture(
+    int x, int y, unsigned kind, unsigned phase, uint64_t id, int origin_x, int origin_y) {
+  QarvtkPanelGesture event{};
+  event.peer[0] = 1;
+  event.gesture_id = id;
+  event.kind = kind;
+  event.phase = phase;
+  event.hand = 2;
+  event.tap_count = kind == 1 ? 1 : 0;
+  event.x = x;
+  event.y = y;
+  const auto batch = sdk_input.offer(event, origin_x, origin_y, seconds());
+  for (unsigned i = 0; i < batch.count; ++i)
+    qarvtk::enqueue_panel_input(input, batch.events[i]);
+}
 extern "C" __declspec(dllexport) void qarvtk_test_panel_tap(int x, int y) {
   QarvtkPanelGesture event{};
   event.peer[0] = 1;
@@ -57,13 +72,48 @@ extern "C" __declspec(dllexport) void qarvtk_test_panel_tap(int x, int y) {
   event.tap_count = 1;
   event.x = x;
   event.y = y;
-  input.push_back(event);
+  qarvtk::enqueue_panel_input(input, event);
 }
 #else
 int main(int argc, char **argv) {
   qputenv("QT_QPA_PLATFORM", "offscreen");
   QApplication app(argc, argv);
   try {
+    {
+      std::deque<QarvtkPanelGesture> backlog;
+      QarvtkPanelGesture drag{};
+      drag.peer[0] = 1;
+      drag.hand = 2;
+      drag.kind = 3;
+      drag.gesture_id = 17;
+      qarvtk::enqueue_panel_input(backlog, drag);
+      for (int i = 0; i < 1000; ++i) {
+        drag.phase = 1;
+        drag.x = i;
+        auto hover = drag;
+        hover.kind = 0;
+        hover.gesture_id = 80;
+        qarvtk::enqueue_panel_input(backlog, hover);
+        qarvtk::enqueue_panel_input(backlog, drag);
+        auto other = drag;
+        other.peer[0] = 2;
+        qarvtk::enqueue_panel_input(backlog, other);
+        other = drag;
+        other.hand = 1;
+        qarvtk::enqueue_panel_input(backlog, other);
+      }
+      drag.phase = 2;
+      qarvtk::enqueue_panel_input(backlog, drag);
+      require(backlog.size() == 6, "Motion backlog grew with obsolete pointer positions");
+      require(backlog.front().phase == 0 && backlog.back().phase == 2,
+              "Coalescing discarded a drag lifecycle boundary");
+      for (unsigned i = 1; i < 5; ++i)
+        require(backlog[i].x == 999, "Coalescing mixed different peers, hands or gestures");
+      drag.phase = 1;
+      qarvtk::enqueue_panel_input(backlog, drag);
+      require(backlog.size() == 7 && backlog[5].phase == 2,
+              "Coalescing crossed a release boundary");
+    }
     Controls controls(reinterpret_cast<QarvtkHost *>(1), 0, 0, 0);
     for (const auto *name : {"Red", "Yellow", "Green"})
       controls.add_row(name, "#ffffff");
@@ -96,7 +146,7 @@ int main(int argc, char **argv) {
           event, int(origin.x() * double(slot.content_width) / controls.widget->width()),
           int(origin.y() * double(slot.content_height) / controls.widget->height()), seconds());
       for (unsigned i = 0; i < batch.count; ++i)
-        input.push_back(batch.events[i]);
+        qarvtk::enqueue_panel_input(input, batch.events[i]);
       pump();
     };
     for (unsigned i = 0; i < 3; ++i) {

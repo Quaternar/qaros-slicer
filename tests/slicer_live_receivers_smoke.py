@@ -27,7 +27,7 @@ from QarosVTKLib.qarvtk_host_panels import SlicePanels
 
 def run():
     assert slicer.app.layoutManager(), 'This GPU test requires the main Slicer window'
-    assert QarosLive.LIVE_VERSION == 'r8.13', 'Install r8.13 before this test'
+    assert QarosLive.LIVE_VERSION == 'r8.14', 'Install r8.14 before this test'
     client = VisualizerMcp()
     pause_policy = client.call('viz_state', {})['structuredContent']['stream_pause_policy']
     hub = transport = None

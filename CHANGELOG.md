@@ -35,6 +35,12 @@ behaviour is released at once: CI moves the `Unreleased` entries under the new v
 
 ### Bug fixes
 
+- Slicer Live r8.14 coalesces pending hover/drag positions for every slice and
+  playback control while preserving press/release/cancel boundaries. Slow GUI
+  work no longer requires replaying all obsolete movement samples. The native
+  time slider has a larger touch area and loads its selected volume on release,
+  avoiding repeated proxy-volume replacements during scrubbing.
+
 - Slicer Live r8.13 includes the selected receivers' internal mixers in the
   controls panel audience, so restricted panels can receive gestures on the
   installed QAROS runtime. Retained panels discard obsolete audience entries.

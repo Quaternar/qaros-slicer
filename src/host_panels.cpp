@@ -70,7 +70,7 @@ struct HostPanel {
   HostPanelInput input_mapper;
   std::vector<QarPeerId> input_peers;
   uint64_t input_epoch=1;
-  uint64_t input_received{},input_accepted{},input_filtered{},input_invalid{};
+  uint64_t input_received{},input_accepted{},input_filtered{},input_invalid{},input_coalesced{};
   QarvtkPanelGesture last_input{};
   QarvtkPanelGesture last_drag{};
   bool had_drag{};
@@ -149,11 +149,13 @@ struct PanelStream {
          [&](const auto& p){return qar_peer_id_equals(&p,&peer);})){++panel.input_filtered;return;}
       const auto now=std::chrono::duration<double>(Clock::now().time_since_epoch()).count();
       auto batch=panel.input_mapper.offer(event,start.x_pixels,start.y_pixels,now);
-      if(panel.input.size()+batch.count>128){
+      for(unsigned i=0;i<batch.count;++i)
+        panel.input_coalesced+=enqueue_panel_input(panel.input,batch.events[i]);
+      if(panel.input.size()>128){
         panel.input.clear();panel.input_mapper.reset();++panel.input_epoch;
         batch=panel.input_mapper.offer(event,start.x_pixels,start.y_pixels,now);
+        for(unsigned i=0;i<batch.count;++i)enqueue_panel_input(panel.input,batch.events[i]);
       }
-      for(unsigned i=0;i<batch.count;++i)panel.input.push_back(batch.events[i]);
       ++panel.input_accepted;
     }catch(...){} // A background SDK callback never propagates into the runtime.
   }
@@ -391,6 +393,7 @@ std::string HostPanels::status(HostPanel* handle){
     std::lock_guard<std::mutex> lock(p.input_mutex);
     state+="; input received="+std::to_string(p.input_received)+" accepted="+std::to_string(p.input_accepted)+
       " filtered="+std::to_string(p.input_filtered)+" invalid="+std::to_string(p.input_invalid);
+    state+=" coalesced="+std::to_string(p.input_coalesced);
     if(p.input_received)state+=" last="+std::to_string(p.last_input.kind)+"/"+std::to_string(p.last_input.phase)+
       " pixel="+std::to_string(p.last_input.x)+","+std::to_string(p.last_input.y);
     if(p.had_drag)state+=" last_drag="+std::to_string(p.last_drag.gesture_id)+"/"+std::to_string(p.last_drag.phase);

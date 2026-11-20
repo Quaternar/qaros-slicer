@@ -3,9 +3,36 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <deque>
 #include <vector>
 
 namespace qarvtk {
+// Keep only the newest continuous position for each pointer/gesture. Lifecycle
+// boundaries stay ordered, so release never waits behind stale motion history.
+inline bool enqueue_panel_input(std::deque<QarvtkPanelGesture> &pending,
+                                const QarvtkPanelGesture &event) {
+  const auto motion = [](const auto &value) {
+    return value.phase == 1 && (value.kind == 0 || value.kind == 3);
+  };
+  bool coalesced = false;
+  if (motion(event)) {
+    for (std::size_t i = pending.size(); i; --i) {
+      const auto &previous = pending[i - 1];
+      if (!motion(previous))
+        break;
+      if (previous.kind == event.kind && previous.hand == event.hand &&
+          previous.gesture_id == event.gesture_id &&
+          !std::memcmp(previous.peer, event.peer, sizeof(event.peer))) {
+        pending.erase(pending.begin() + (i - 1));
+        coalesced = true;
+        break;
+      }
+    }
+  }
+  pending.push_back(event);
+  return coalesced;
+}
+
 // The recognizer starts a drag after a physical travel threshold. Qt needs
 // its mouse press at the original contact, before moving to the current point.
 class HostPanelInput {

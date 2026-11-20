@@ -174,6 +174,8 @@ struct Controls {
   bool dirty = true, capturing{};
   double last_capture{};
   uint64_t captured_frames{};
+  uint32_t last_pointer{};
+  bool had_pointer{};
   std::unique_ptr<DirtyMonitor> monitor;
   explicit Controls(QarvtkHost *h, double x, double y, double z)
       : host(h), widget(std::make_unique<QWidget>()) {
@@ -298,6 +300,15 @@ struct Controls {
               std::to_string(std::count_if(rows.begin(), rows.end(), [](const auto &row) {
                 return row.slider->isSliderDown();
               }));
+    if (playback) {
+      const auto sliders = playback->findChildren<QSlider *>();
+      for (const auto *slider : sliders)
+        result += " " + slider->objectName().toStdString() + "_down=" +
+                  std::to_string(slider->isSliderDown());
+    }
+    if (had_pointer)
+      result += " pointer_pressed=" +
+                std::to_string(manager->pointer_state().is_pressed(last_pointer));
     if (!snapshot.panels.empty()) {
       const auto &panel = snapshot.panels.front();
       result += " Qt delivered=" + std::to_string(panel.input_events_delivered) +
@@ -364,6 +375,8 @@ struct Controls {
         event.kind = static_cast<seam::PanelGestureKind>(raw.kind);
         event.phase = static_cast<seam::PanelGesturePhase>(raw.phase);
         event.hand = static_cast<seam::PointerHand>(raw.hand);
+        last_pointer = seam::PanelGestureMapper::pointer_id_for(event.peer, event.hand);
+        had_pointer = true;
         event.tap_count = uint8_t(raw.tap_count);
         event.x_pixels = raw.x;
         event.y_pixels = raw.y;

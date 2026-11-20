@@ -116,6 +116,22 @@ do not describe general pause/resume recovery as fully validated.
 
 ## Remaining live check
 
+The r8.14 follow-up addresses motion backlog shared by the slice and animation
+controls. Continuous queued positions are coalesced for the same peer, hand,
+kind and gesture; press/release/cancel events stay ordered. The real MRML
+timeline test previously replayed 60 obsolete frame changes from a queued burst.
+It now loads at most the final frame: its native slider has Qt tracking disabled
+and commits on release. Slice controls retain their live preview. The actual
+timeline hit area is increased from 15 to at least 48 logical pixels.
+
+During live sampling a drag continued to report updated positions while the
+simulated fingertip alternated between roughly z=-0.815 m (pressed) and
+z=-0.745 m (withdrawn), with the panel at z=-0.8 m. Its eventual cancellation
+followed leaving the panel. This may include runtime lifecycle/delivery delay;
+the host's reproduced queue cost does not establish the only cause. Direct
+mouse mode with the simulated hand off did not provide usable drag input for
+this restricted native video panel, so simulated hand mode was restored.
+
 Yellow/green live operation and physical headset input still need verification.
 The user previously reported intermittent simulated-hand release, then
 confirmed that movement and release work in the latest live test. Native status

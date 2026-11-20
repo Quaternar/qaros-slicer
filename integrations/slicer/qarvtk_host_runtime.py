@@ -95,7 +95,7 @@ class VisualizerMcp:
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         self.headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
         self.request("initialize", dict(protocolVersion="2024-11-05", capabilities={},
-                     clientInfo=dict(name="qaros-slicer", version="r8.13")), 1)
+                     clientInfo=dict(name="qaros-slicer", version="r8.14")), 1)
         self.request("notifications/initialized", None, None)
 
     def request(self, method, params, request_id):

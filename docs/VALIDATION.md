@@ -1,5 +1,31 @@
 # Validation and next work
 
+## Motion backlog and release-only seek r8.14 (2026-11-21)
+
+The user reported an increasingly delayed timeline and suspected the slice
+sliders were affected too. A real Slicer/MRML regression queued 60 alternating
+time-slider movements before a release. The old input path replayed all 60
+proxy-frame changes. Pending continuous hover/drag positions are now coalesced
+per peer, hand, kind and gesture, without crossing lifecycle boundaries.
+This shared SDK-to-GUI queue applies to every slider; slice previews remain live.
+
+The original MRML time widget is retained. Its Qt slider now has tracking
+disabled and a 48-pixel minimum height. Dragging changes the local handle;
+release commits the chosen frame through Slicer's existing MRML connection.
+The revised real-Slicer regression passes: no proxy-volume change during a
+drag, the chosen proxy data on release, no further seek from hover, cancellation
+after a lost end, ten native Stop callbacks, and at most one frame replacement
+for the queued burst. All 23 main CTest checks pass, including 1,000 interleaved
+motions from different peers/hands, preserved boundaries and all slice controls.
+The Windows updater fixture passed and the r8.14 package is installed locally.
+
+The live trace also recorded a QAROS drag remaining updated while the simulated
+fingertip had moved in front of the panel; cancellation arrived after leaving
+it. Host backlog cost is reproduced, but it is not established as the sole cause
+of live input latency. Further live validation is required after this change.
+Qt status now distinguishes the actual time-slider down state from the input
+pointer's pressed state. The automatic-pause recovery issue below remains open.
+
 ## Pipeline audience and drag origin r8.13 (2026-11-20)
 
 The unmodified official Qt example was built and a live tap incremented its
