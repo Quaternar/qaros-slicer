@@ -31,6 +31,14 @@ The fixture is built with the Qt tests; run
 The optional `QARVTK_TEST_UNSAFE_LOADER=1` reproduces the old failure in an
 isolated process without connecting to QAROS. All 23 CTest checks passed again.
 
+Follow-up: automatic `windowMinimized` pausing caused a black panel with all
+four panel streams reporting `No active transfers`. Returning to `never` did
+not recover them; restarting the owned sample Slicer with new senders did.
+Closing the auxiliary viewer or a hidden diagnostic website panel alone did
+not reproduce it. Re-enabling automatic pause did reproduce loss of the panel
+transfers. This recovery issue remains open, separate from the tested manual
+pause and SDK 602 handling. The current Visualizer test uses policy `never`.
+
 Yellow/green live operation and physical headset input remain to be verified.
 The status includes the last raw drag phase and pressed-slider count for that
 investigation. See [the input findings](QAROS_VIDEO_PANEL_INPUT.md).

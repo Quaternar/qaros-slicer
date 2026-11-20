@@ -93,6 +93,27 @@ Stop taps reached PythonQt, stopped playback and reset both the MRML browser
 and its actual proxy-volume data to frame zero. No QAROS connection or user
 data is used by this regression.
 
+## Automatic-pause recovery: still open
+
+After the Stop fix, the Qt panel remained registered and its Python/native
+status contained no error, but its content became black. All four panel
+senders reported `No active transfers`; the receiver reported
+`Paused: no visible display` with `automatically_paused=true`.
+Returning its pause policy to `never` resumed the main rendering route but
+did not restore the panel receivers. Hiding/showing the Qt panel and rejoining
+the same receiver also did not restore them. Restarting the owned sample
+Slicer with new video senders recovered actual Qt and slice pixels.
+
+Closing the auxiliary GUI-panel viewer and closing a separate hidden website
+panel were then checked individually while the policy remained `never`;
+the video panels continued playing. Restoring `windowMinimized` while the
+Visualizer window was hidden reproduced automatic pausing. After returning
+to `never`, all four panel streams again lost active transfers. This is a
+separate recovery problem from fatal SDK status 602 and the PythonQt Stop
+access violation. These observations do not establish the runtime's internal
+cause. Keep automatic pausing disabled during the current Visualizer test;
+do not describe general pause/resume recovery as fully validated.
+
 ## Remaining live check
 
 Yellow/green live operation and physical headset input still need verification.

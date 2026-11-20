@@ -44,6 +44,12 @@ zachovává panely při dočasném pozastavení přenosu. Pohyb a uvolnění byl
 potvrzeny ve Visualizeru; zbývá ověření ostatních řezů a fyzických brýlí.
 Podrobnosti jsou v [VALIDATION.md](VALIDATION.md).
 
+Při tomto testu ponech automatické pozastavování streamu ve Visualizeru
+vypnuté (`never`). Po automatickém pozastavení skrytého okna se na současném
+QAROS ztratil odběr panelových videí; samotné Resume ho neobnovilo. Obraz se
+vrátil po restartu testovacího Sliceru. Obnova po této automatické pauze se
+ještě vyšetřuje.
+
 Pro přesné přiřazení ovládání rozliš názvy receiverů. Pokud mají více receiverů
 stejný název, lze bezpečně vybrat celou tuto skupinu; při částečném výběru
 plugin u Qt zobrazí upozornění a neodhadne nesprávný headset.
