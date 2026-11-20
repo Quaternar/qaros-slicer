@@ -183,7 +183,7 @@ struct Controls {
     widget->setFixedSize(640, 252);
     widget->setStyleSheet(
         "QWidget {background:#202735;color:white;font-size:18px;} QSlider::groove:horizontal "
-        "{height:12px;background:#586477;} QSlider::handle:horizontal {width:28px;margin:-12px "
+        "{height:12px;background:#586477;} QSlider::handle:horizontal {width:44px;margin:-12px "
         "0;background:#e6eaf0;border-radius:7px;} QDoubleSpinBox {min-height:38px;}");
     layout = new QGridLayout(widget.get());
     layout->setContentsMargins(18, 12, 18, 12);
@@ -288,7 +288,24 @@ struct Controls {
     char status[2048]{};
     qarvtk_host_panel_status(host, factory->sender->panel(), status, sizeof(status));
     const auto stats = mapper.stats();
-    return std::string(status) + "; mapped=" + std::to_string(stats.events_received);
+    const auto snapshot = manager->diagnostics();
+    std::string result =
+        std::string(status) + "; mapped=" + std::to_string(stats.events_received) +
+        " missed=" + std::to_string(snapshot.input_samples_missed) +
+        " input_size=" + std::to_string(factory->sender->input_slot.content_width) + "x" +
+        std::to_string(factory->sender->input_slot.content_height);
+    result += " sliders_down=" +
+              std::to_string(std::count_if(rows.begin(), rows.end(), [](const auto &row) {
+                return row.slider->isSliderDown();
+              }));
+    if (!snapshot.panels.empty()) {
+      const auto &panel = snapshot.panels.front();
+      result += " Qt delivered=" + std::to_string(panel.input_events_delivered) +
+                " dropped=" + std::to_string(panel.input_events_dropped);
+      if (!panel.last_input_drop_reason.empty())
+        result += " (" + panel.last_input_drop_reason + ")";
+    }
+    return result;
   }
   void update(unsigned index, double minimum, double maximum, double step, double value,
               bool enabled) {
@@ -373,8 +390,7 @@ struct Controls {
       const auto frames = snapshot.panels.empty() ? 0 : snapshot.panels.front().frames_captured;
       // The library has its own pacing gate. A tick it paces away must not
       // consume the only dirty notification (notably during a resize).
-      if (!factory->sender ||
-          (active && frames == captured_frames) ||
+      if (!factory->sender || (active && frames == captured_frames) ||
           (!snapshot.panels.empty() && snapshot.panels.front().resize_pending))
         dirty = true;
       captured_frames = frames;

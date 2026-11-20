@@ -26,11 +26,11 @@ public:
   void visible(HostPanel*,bool);
   void close(HostPanel*);
   std::string status(HostPanel*);
-  void start(QarSession*,const std::vector<QarPeerId>&);
+  void start(QarSession*,const std::vector<QarPeerId>&,const std::vector<QarPeerId>& visibility={},const std::string& scope_note={});
   // Thread-safe, additive audience: a late headset sees the existing panels.
   void add_peers(const std::vector<QarPeerId>&);
   // Exact live audience. Empty hides panels and suspends input, never broadcasts.
-  void set_peers(const std::vector<QarPeerId>&);
+  void set_peers(const std::vector<QarPeerId>&,const std::vector<QarPeerId>& visibility={},const std::string& scope_note={});
   void request_stop();
   void join(); // SDK-owning worker calls this before session destruction.
 };

@@ -1,63 +1,107 @@
-# Video-panel input reproduction
+# QAROS panel input findings
 
 Observed on 2026-11-20 with QAROS `0.10.0-rc.4.16+793871a8`, Slicer
 5.12.4 / Qt 5.15.2 and the matching public C SDK at `d90dd6a3`.
+The original black-panel failure and the live input failures are separate.
 
-The streamed Qt controls are visible and update when changed in Slicer.
-The Visualizer's simulated hand shows a contact ring on the content, but
-the source receives no panel gestures, so sliders and playback controls
-cannot respond to that contact.
+## Retained stream binding: fixed in r8.12
 
-## Steps and evidence
+After interrupting an owned Slicer test and reopening the same panel
+identities, the 3D volume was decoded while four panels were black.
+`get_or_create` had retained their previous stream IDs. Explicitly binding
+current streams and restoring visible state recovered actual Qt and slice
+images without deleting the panels. The calls run only at stream startup.
 
-1. Create a mono RGBA video sender and a GUI panel using
-   `QarGuiPanelStreamIdExt`. On reuse, explicitly bind the current sender
-   with `qar_gui_panels_set_stream`; confirm decoded pixels are visible.
-2. Subscribe with `qar_gui_panels_subscribe_all_gesture_events`, keeping
-   its cancellation token and callback context alive. Registration succeeds.
-3. In a Visualizer receiver, enable the simulated hand with H and use
-   Click / drag. Hold over a slider for four seconds, then release. The
-   content contact ring is visible, but the source callback is never called.
-4. A 35-second `viz_target_poses(include_joints=true)` measurement recorded
-   401 samples. The index fingertip reached 15.1 mm behind the panel plane
-   for 34 samples; reach alone does not explain the missing input.
-5. `viz_hand_targets(kinds=["gui_panel"])` reports no events for the Qt
-   video panel. The source counts callbacks before parsing or audience
-   filtering: received, accepted, filtered and invalid all remain zero.
-6. Temporarily hide the video panel and place a small website panel at the
-   same pose and physical size. The same simulated hand produces hover
-   started/updated events for that website panel. Restore the video panel:
-   no events are reported for it.
+## Restricted panel gestures: addressed in r8.13
 
-The Qt production input path separately passes slider dragging and button
-activation with copied SDK gestures. This isolates the missing live events
-from the widget's ability to respond, without claiming an internal runtime
-cause. Website hover is the control observation; website dragging was not
-validated by this check. A blue contact ring alone is not proof that a GUI
-gesture was published.
+With the panel narrowed to the selected target peer, neither its native
+callback nor Visualizer GUI-panel telemetry received live gestures.
+The contact ring and decoded image alone did not establish input delivery.
 
-A temporary comparison also used CPU video ingress for the controls, as
-the official qaros-qt backend does, instead of this host's OpenGL ingress.
-Decoded controls were visible, but the callback and GUI-panel telemetry
-still received zero events during the simulated-hand drag. The CPU variant
-was removed. This does not exclude a registration or integration problem;
-the sender's graphics ingress alone did not resolve the observation.
+The unmodified official qaros-qt example at `14c18c00` was then built and
+run independently of Slicer. A real simulated-hand tap reached its native
+callback and changed its label to `clicked 1 times`. That established a
+working Qt/QAROS control case on this installation.
 
-A second OpenGL check created the controls at a previously unused panel
-index, with a newly initialized audience containing only the active test
-receiver. The controls were decoded, but neither the subscription counter
-nor GUI-panel telemetry reported gestures during the drag. Reusing the old
-panel identity is therefore not required for the observed failure.
+Controlled changes to the Slicer panel showed:
 
-## Separate restart fix
+- An unrestricted panel immediately received hover, tap and drag events.
+- Adding only the source Slicer peer to the restricted list did not restore
+  sustained input.
+- Including the selected receiver's internal mixer restored native events
+  while the panel remained restricted.
+- CPU video ingress, as used by the official example, alone did not restore
+  restricted input. The experiment was removed; video still uses OpenGL.
 
-The black-panel issue after an interrupted source is addressed in Slicer
-Live r8.12. `get_or_create` can retain an old video stream: explicitly
-rebinding the current stream restored all four decoded panel images with
-their existing identities. That image fix did not resolve this input issue.
+r8.13 builds the exact panel audience from the selected targets, their live
+internal mixers and the non-display source observer. Input is separately
+accepted only from the selected target peers. Peer changes use the existing
+SDK subscription inbox; no MCP polling is added to the plugin.
 
-No MCP polling or synthetic touch injection has been added to the plugin.
-MCP was used only for this diagnosis. The next required check is why the
-runtime emits no GUI gestures for the video content despite the contact,
-then a real hand test in the headset. Keep the integration on its test
-branch until that check succeeds.
+The current public peer API supplies display labels and roles, without a
+mixer/target relationship in the fields used here. Resolution uses QAROS's
+documented `<target> mixer` label and the internal role, with presence and
+ambiguity checks. A partial selection of same-named targets does not add
+ambiguous mixers: select the whole named group or give receivers distinct
+names. This preserves selection rather than broadcasting controls to all
+headsets. A mixer replacement triggers resolution again.
+
+A retained audience is reconciled once, before pixels are submitted.
+Only panel IDs and visible-to lists are read. Obsolete target/mixer IDs are
+removed after adding the current nonempty scope, so removal never passes
+through the SDK's empty-list broadcast state.
+
+These observations identify the scope combination needed on this runtime;
+they do not establish the internal implementation of its filtering.
+
+## Drag press position: fixed in r8.13
+
+Real SDK records showed a drag's `started` point already 23–25 pixels away
+from its `start_position`. The previous adapter discarded the origin.
+Qt therefore pressed the track outside the 28-pixel thumb and performed
+small page steps instead of grabbing it. This matched the user's report.
+
+The adapter now queues a press at the original contact, followed by a move
+to the current point. It also reconstructs an initial update whose started
+phase was missed, and clears that state on cancellation epochs or queue
+overflow. This uses the existing bounded input queue and preserves ABI 5.
+The thumb is wider for easier finger targeting.
+
+The Qt regression now starts outside the thumb and verifies all three
+sliders, a missing initial phase, tap ID 0, interleaved hover, and hover after
+release. It asserts that release clears `isSliderDown()` and later hover
+cannot continue moving the slider. All 23 main CTest checks pass. In the
+live test the user confirmed movement and release now work.
+
+## Paused streams and PythonQt callbacks: fixed in r8.13
+
+SDK status 602 (`MediaStreamingStreamIsPaused`) was reproduced during a
+receiver pause. Treating it as fatal closed all panel senders. It is now a
+recoverable frame wait; the live panels survived a pause longer than 30 seconds
+and resumed with their existing identities.
+
+After dragging and release worked, the user reported that Stop removed the
+controls panel. Its status showed an access violation reading address `0x60`.
+The Qt bridge used `ctypes.CDLL`, which releases the Python GIL while native
+mouse dispatch synchronously invokes PythonQt slots. `ctypes.PyDLL` retains
+the GIL for these GUI calls.
+
+An isolated Slicer test loads the actual Qt bridge against an in-memory host
+fixture, adopts the real playback widget and dispatches native mouse taps.
+With CDLL, Stop reproduced the same `0x60` access violation. With PyDLL, ten
+Stop taps reached PythonQt, stopped playback and reset both the MRML browser
+and its actual proxy-volume data to frame zero. No QAROS connection or user
+data is used by this regression.
+
+## Remaining live check
+
+Yellow/green live operation and physical headset input still need verification.
+The user previously reported intermittent simulated-hand release, then
+confirmed that movement and release work in the latest live test. Native status
+shows the last raw SDK drag phase, the number of pressed Qt sliders,
+Qt delivery/drop counts and the content dimensions, so SDK lifecycle issues
+can be distinguished from widget handling.
+
+Synthetic tests and the working standalone button do not establish that
+all headset controls work. Keep the integration on its test branch until
+real headset validation succeeds.

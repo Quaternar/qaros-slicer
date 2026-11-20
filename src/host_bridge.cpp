@@ -20,6 +20,7 @@
 #if QARVTK_HOST_ONBOARDING_API
 #include "../apps/host_hub.hpp"
 #include "../apps/host_device_selection.hpp"
+#include "../apps/host_panel_scope.hpp"
 #endif
 #include <array>
 #include <algorithm>
@@ -392,7 +393,7 @@ struct QarvtkHost {
     std::filesystem::create_directories(std::filesystem::u8path(log_folder));
     log.open(std::filesystem::u8path(log_folder)/"host-bridge.log",std::ios::app);
     if(!log)throw std::runtime_error("Cannot open host bridge log");
-    log<<"Host build: installed-hub-update-r8.12 (ABI 5); SDK header " QARVTK_HOST_SDK_HASH<<std::endl;
+    log<<"Host build: installed-hub-update-r8.13 (ABI 5); SDK header " QARVTK_HOST_SDK_HASH<<std::endl;
     log<<"SDK root: "<<sdk_root<<std::endl;
     log<<"Target mode: "<<target<<"; workspaces="<<volumes.size()<<std::endl;
     if(!asynchronous_copies)copying=std::make_unique<qarvtk::HostSharedWgl>(dc,host_context);
@@ -522,6 +523,7 @@ struct Session {
   std::vector<QarPeerId> panel_peers;
   qarvtk::HostLiveSelection::Snapshot desired{};
   std::uint64_t selection_generation=0;
+  std::uint64_t panel_registry_revision=~uint64_t(0);
   Clock::time_point waiting_since=Clock::now();
 #if QARVTK_HOST_ONBOARDING_API
   QarPeerId source_peer=qar_peer_id_default();
@@ -1112,6 +1114,7 @@ struct Session {
       changed=previous!=selection_generation;
     }
 #if QARVTK_HOST_ONBOARDING_API
+    const auto current_registry_revision=target_registry->revision();
     const auto available=target_registry->snapshot();
     // Record discovery changes once, including why a headset is filtered out.
     // Callbacks still only copy metadata; no logging or SDK work on that thread.
@@ -1180,11 +1183,22 @@ struct Session {
       for(std::size_t t=0;t<targets.size();++t)if(desired[t].wanted&&!targets[t].retirement&&target_ready_count(t))next.push_back(targets[t].peer);
       const bool audience_changed=next.size()!=panel_peers.size()||!std::equal(next.begin(),next.end(),panel_peers.begin(),
         [](const auto& a,const auto& b){return qar_peer_id_equals(&a,&b);});
+#if QARVTK_HOST_ONBOARDING_API
+      const auto registry_revision=current_registry_revision;
+      if(audience_changed||registry_revision!=panel_registry_revision){
+        const auto scope=qarvtk::host_panel_scope(available,next,source_peer);
+        if(!panels_started&&!next.empty()){host.panels->start(session,next,scope.peers,scope.note);panels_started=true;}
+        else if(panels_started)host.panels->set_peers(next,scope.peers,scope.note);
+        panel_peers=std::move(next);
+        panel_registry_revision=registry_revision;
+      }
+#else
       if(audience_changed){
         if(!panels_started&&!next.empty()){host.panels->start(session,next);panels_started=true;}
         else if(panels_started)host.panels->set_peers(next);
         panel_peers=std::move(next);
       }
+#endif
       return;
     }
     bool all_done=true;
@@ -1197,6 +1211,13 @@ struct Session {
         else host.panels->add_peers(panel_peers);
       }
     }
+#if QARVTK_HOST_ONBOARDING_API
+    if(panels_started&&(changed||current_registry_revision!=panel_registry_revision)){
+      const auto scope=qarvtk::host_panel_scope(available,panel_peers,source_peer);
+      host.panels->set_peers(panel_peers,scope.peers,scope.note);
+      panel_registry_revision=current_registry_revision;
+    }
+#endif
     if(!host.stopping&&!ready_count()&&(all_done||Clock::now()-waiting_since>std::chrono::seconds(120)))
       throw std::runtime_error("No usable rendering sender. "+progress());
   }
@@ -1253,7 +1274,7 @@ const char* qarvtk_host_info(){
 #else
     "0"
 #endif
-    ",\"panel_stream_rebind\":1,\"header_sha256\":\"" QARVTK_HOST_SDK_HASH "\",\"eye_size\":104,\"frame_size\":240,\"placement_size\":112,\"volume_size\":120}";
+    ",\"panel_stream_rebind\":1,\"panel_pipeline_audience\":1,\"panel_drag_origin\":1,\"header_sha256\":\"" QARVTK_HOST_SDK_HASH "\",\"eye_size\":104,\"frame_size\":240,\"placement_size\":112,\"volume_size\":120}";
 }
 int qarvtk_hub_connect(const char* sdk,const char* folder,QarvtkHub** result,char* error,uint32_t size){
   if(result)*result=nullptr;

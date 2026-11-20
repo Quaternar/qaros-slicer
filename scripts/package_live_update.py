@@ -9,8 +9,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SDK_SHA = '231b63f8bd59e126ae199223e31c5efabf36eefbca36cd4ab5fb375991837a77'
-BUILD = 'installed-hub-update-r8.12'
-NATIVE_BUILD = 'installed-hub-update-r8.12'
+BUILD = 'installed-hub-update-r8.13'
+NATIVE_BUILD = 'installed-hub-update-r8.13'
 
 
 def package(dll, qt_dll, output, compiler):
@@ -44,6 +44,8 @@ def package(dll, qt_dll, output, compiler):
         raise ValueError('DLL does not provide copied GUI panel input')
     if b'"panel_stream_rebind":1' not in native:
         raise ValueError('DLL does not rebind retained GUI panels to the current video stream')
+    if b'"panel_pipeline_audience":1' not in native or b'"panel_drag_origin":1' not in native:
+        raise ValueError('DLL lacks receiver/mixer input scope or original-contact drag input')
     qt_native = Path(qt_dll).read_bytes()
     if len(qt_native) < 64 or qt_native[:2] != b'MZ':
         raise ValueError('Expected a Windows Qt controls DLL')
@@ -80,11 +82,11 @@ def package(dll, qt_dll, output, compiler):
                 performance_report='docs/SLICER_RENDER_PERFORMANCE.md',
                 receiver_creation='visualizer_mcp',
                 qt_slice_controls=1, qt_playback_controls=1, qt_controls_event_driven=1, qt_version='5.15.2',
-                panel_stream_rebind=1,
+                panel_stream_rebind=1, panel_pipeline_audience=1, panel_drag_origin=1,
                 stable_app_tag='slicer.qaros.quaternar', max_selected_targets=8,
                 max_visualizer_targets=8, max_headset_targets=8,
                 runtime_teardown='handle_only',
-                panel_registration_snapshot='none',
+                panel_registration_snapshot='audience_only_on_start',
                 runtime_included=False, live_gpu_tested=True,
                 live_gpu_test_scope='ct_two_visualizers_live_selection_slice_video_qt_controls_bidirectional', live_headset_tested=False,
                 files={name: hashlib.sha256(data).hexdigest() for name, data in payload.items()})

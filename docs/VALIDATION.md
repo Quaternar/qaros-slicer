@@ -1,5 +1,40 @@
 # Validation and next work
 
+## Pipeline audience and drag origin r8.13 (2026-11-20)
+
+The unmodified official Qt example was built and a live tap incremented its
+counter. Restricting the Slicer panel to target IDs suppressed live input;
+including each selected target's internal mixer restored it. The plugin now
+resolves that scope from its existing SDK peer inbox when metadata changes,
+with no MCP polling. Retained audiences are reconciled once at startup.
+
+SDK drag starts were recorded 23–25 pixels away from their original contact.
+The adapter now presses at that origin before moving. The Qt regression
+starts outside the thumb, recovers a missing started phase and checks all
+three sliders, tap ID 0, concurrent hover and release. Hover after release
+must not continue moving a slider. All 23 main CTest checks passed, as did
+the Windows updater fixture. r8.13 is installed locally.
+
+During the live follow-up a temporary video pause (SDK 602) was reproduced;
+the previous handler closed all panels as failed. The frame-wait classifier
+now retries pauses, no-transfer and reconnecting states while leaving closed
+streams and other errors fatal. Its regression passed with the full suite.
+
+The user subsequently confirmed that movement and release work, but Stop
+removed the controls panel with an access violation reading `0x60`. An isolated
+Slicer test reproduced that exact error by dispatching a native Qt mouse tap
+into the PythonQt Stop slot using the old CDLL loader. Retaining the GIL with
+PyDLL passed ten taps, including real MRML browser and proxy-data resets.
+The fixture is built with the Qt tests; run
+`tests/slicer_native_callback_smoke.py` with Slicer's `--python-script`, setting
+`QARVTK_QT_FIXTURE` to its DLL and `QARVTK_CALLBACK_RESULT` to a result file.
+The optional `QARVTK_TEST_UNSAFE_LOADER=1` reproduces the old failure in an
+isolated process without connecting to QAROS. All 23 CTest checks passed again.
+
+Yellow/green live operation and physical headset input remain to be verified.
+The status includes the last raw drag phase and pressed-slider count for that
+investigation. See [the input findings](QAROS_VIDEO_PANEL_INPUT.md).
+
 ## Retained video panel repair r8.12 (2026-11-20)
 
 Reproduced the black-panel failure with the installed r8.11 package by

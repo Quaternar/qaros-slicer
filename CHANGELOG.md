@@ -15,8 +15,8 @@ behaviour is released at once: CI moves the `Unreleased` entries under the new v
   in the slice controls panel, with sequence selection and Stop. Slice sliders
   follow up to eight open slice views. Qt capture is driven by widget updates;
   unchanged controls use no repeated image uploads. The Qt status includes
-  input counters for troubleshooting headset gestures. Live input on the
-  tested QAROS 0.10 runtime remains unresolved; see the
+  input counters for troubleshooting headset gestures. Receiver-scoped input
+  and native callback fixes are described in the
   [video-panel input reproduction](docs/QAROS_VIDEO_PANEL_INPUT.md).
 
 - Slicer Live r8.10 adds a Qt **Slice controls** panel with Red, Yellow and Green
@@ -34,6 +34,17 @@ behaviour is released at once: CI moves the `Unreleased` entries under the new v
   pinned to the public header shipped with that runtime.
 
 ### Bug fixes
+
+- Slicer Live r8.13 includes the selected receivers' internal mixers in the
+  controls panel audience, so restricted panels can receive gestures on the
+  installed QAROS runtime. Retained panels discard obsolete audience entries.
+  Dragging presses Qt at the original contact before following the current
+  fingertip, preventing tiny page steps when recognition starts after movement.
+  A temporary SDK pause (602) now waits for recovery instead of closing all
+  panel streams permanently. Qt calls retain the Python GIL so native mouse
+  events can safely invoke PythonQt slots; Stop previously raised an access
+  violation and removed the controls panel. Status distinguishes SDK drag
+  phase from pressed Qt sliders. Physical headset validation remains open.
 
 - Slicer Live r8.12 explicitly attaches the current video stream and restores
   visibility when it reuses a GUI panel. A retained panel could otherwise show

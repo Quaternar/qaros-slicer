@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <atomic>
 
 namespace qarvtk {
 struct HostTarget {
@@ -27,6 +28,7 @@ class HostTargetRegistry {
   mutable std::mutex mutex_;
   std::vector<HostTarget> peers_;
   std::string error_;
+  std::atomic<uint64_t> revision_{0};
   void put(HostTarget peer,bool initial) {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto found=std::find_if(peers_.begin(),peers_.end(),[&](const auto& p){
@@ -34,14 +36,16 @@ class HostTargetRegistry {
     });
     // Subscribe before taking the initial snapshot. A newer callback wins
     // over a snapshot entry that was read while that callback was delivered.
-    if(found!=peers_.end()){if(!initial)*found=std::move(peer);return;}
+    if(found!=peers_.end()){if(!initial){*found=std::move(peer);++revision_;}return;}
     if(peers_.size()>=4096)throw std::runtime_error("Too many QAROS targets");
     peers_.push_back(std::move(peer));
+    ++revision_;
   }
 public:
   void record(HostTarget peer){put(std::move(peer),false);}
   void seed(HostTarget peer){put(std::move(peer),true);}
-  void fail(std::string error){std::lock_guard<std::mutex> lock(mutex_);error_=std::move(error);}
+  void fail(std::string error){std::lock_guard<std::mutex> lock(mutex_);error_=std::move(error);++revision_;}
+  uint64_t revision() const {return revision_.load();}
   std::vector<HostTarget> snapshot() const {
     std::lock_guard<std::mutex> lock(mutex_);
     if(!error_.empty())throw std::runtime_error(error_);

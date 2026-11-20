@@ -11,7 +11,9 @@ def controls_library(path):
     path = str(Path(path).resolve())
     if path in _libraries:
         return _libraries[path]
-    dll = c.CDLL(path)
+    # Qt events can synchronously call PythonQt slots (for example Stop).
+    # Keep the GIL while the GUI bridge dispatches those events.
+    dll = c.PyDLL(path)
     dll.qarvtk_qt_version.restype = c.c_char_p
     version = dll.qarvtk_qt_version().decode("ascii")
     if version != str(qt.qVersion()):
@@ -40,8 +42,10 @@ class SliceControls:
         self.handle = None
         self.states = {}
         self.names = []
-        if sink.dll._qarvtk_info.get("panel_input") != 1:
-            raise RuntimeError("Install the r8.12 bridge for Qt slice controls")
+        if (sink.dll._qarvtk_info.get("panel_input") != 1 or
+                sink.dll._qarvtk_info.get("panel_pipeline_audience") != 1 or
+                sink.dll._qarvtk_info.get("panel_drag_origin") != 1):
+            raise RuntimeError("Install the r8.13 bridge for Qt slice controls")
         path = Path(sink.dll._name).with_name("qarvtk-qt-controls.dll")
         self.dll = controls_library(path)
         sink.host.window.MakeCurrent()

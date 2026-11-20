@@ -3,6 +3,7 @@
 #endif
 #include "../apps/host_hub.hpp"
 #include "../apps/host_device_selection.hpp"
+#include "../apps/host_panel_scope.hpp"
 #undef NDEBUG
 #include <cassert>
 #include <iostream>
@@ -108,5 +109,28 @@ int main() {
   missing=false;try{selected_host_targets({disconnected,replacement},host_peer_id_text(headset.id));}
   catch(const std::exception&){missing=true;}assert(missing);
 #endif
-  std::cout << "PASS: reachable target discovery; terminal peers excluded; snapshot/update races; category filtering; ambiguity; isolated volume/panel identities\n";
+  auto target_a=viewer;target_a.name="Receiver A";
+  auto target_b=headset;target_b.name="Headset B";
+  auto mixer_a=internal;mixer_a.id.data[0]=21;mixer_a.name="Receiver A mixer";
+  auto mixer_b=internal;mixer_b.id.data[0]=22;mixer_b.name="Headset B mixer";
+#if QARVTK_HOST_PEER_PRESENCE
+  mixer_a.presence=mixer_b.presence=QAR_PEER_PRESENCE_ONLINE;
+#endif
+  const auto contains=[](const HostPanelScope& scope,const QarPeerId& id){return std::any_of(scope.peers.begin(),scope.peers.end(),[&](const auto& peer){return !std::memcmp(peer.data,id.data,sizeof(id.data));});};
+  auto scope=host_panel_scope({source,target_a,target_b,mixer_a,mixer_b},{target_a.id},source.id);
+  assert(contains(scope,target_a.id)&&contains(scope,mixer_a.id)&&contains(scope,source.id));
+  assert(!contains(scope,target_b.id)&&!contains(scope,mixer_b.id)&&scope.note.empty());
+  scope=host_panel_scope({source,target_a,target_b,mixer_a,mixer_b},{target_a.id,target_b.id},source.id);
+  assert(contains(scope,mixer_a.id)&&contains(scope,mixer_b.id)&&scope.note.empty());
+  target_b.name=target_a.name;mixer_b.name=mixer_a.name;
+  scope=host_panel_scope({source,target_a,target_b,mixer_a,mixer_b},{target_a.id},source.id);
+  assert(!contains(scope,mixer_a.id)&&!contains(scope,mixer_b.id)&&!scope.note.empty());
+  scope=host_panel_scope({source,target_a,target_b,mixer_a,mixer_b},{target_a.id,target_b.id},source.id);
+  assert(contains(scope,mixer_a.id)&&contains(scope,mixer_b.id)&&scope.note.empty());
+  mixer_a.id.data[0]=23;
+  scope=host_panel_scope({source,target_a,mixer_a},{target_a.id},source.id);
+  assert(contains(scope,mixer_a.id)&&scope.note.empty());
+  scope=host_panel_scope({source,target_a},{target_a.id},source.id);
+  assert(scope.peers.size()==2&&!scope.note.empty());
+  std::cout << "PASS: reachable targets; snapshot races; exact receiver/mixer audiences; duplicate names; mixer replacement; isolated identities\n";
 }

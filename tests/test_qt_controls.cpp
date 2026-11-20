@@ -1,5 +1,6 @@
 // Exercise the production Qt event path with copied SDK gestures and an in-memory sender.
 #include "../src/qt_slice_controls.cpp"
+#include "qarvtk/host_panel_input.hpp"
 #include <QPushButton>
 #include <QThread>
 #include <deque>
@@ -12,6 +13,7 @@ namespace {
 std::deque<QarvtkPanelGesture> input;
 uint64_t input_epoch = 1;
 unsigned captured{};
+qarvtk::HostPanelInput sdk_input;
 void require(bool condition, const char *text) {
   if (!condition)
     throw std::runtime_error(text);
@@ -45,6 +47,19 @@ int qarvtk_host_panel_gestures(QarvtkHost *, QarvtkHostPanel *, QarvtkPanelGestu
   return int(count);
 }
 }
+#if defined(QARVTK_QT_CONTROLS_FIXTURE)
+extern "C" __declspec(dllexport) void qarvtk_test_panel_tap(int x, int y) {
+  QarvtkPanelGesture event{};
+  event.peer[0] = 1;
+  event.kind = 1;
+  event.phase = 3;
+  event.hand = 2;
+  event.tap_count = 1;
+  event.x = x;
+  event.y = y;
+  input.push_back(event);
+}
+#else
 int main(int argc, char **argv) {
   qputenv("QT_QPA_PLATFORM", "offscreen");
   QApplication app(argc, argv);
@@ -64,29 +79,44 @@ int main(int argc, char **argv) {
       QThread::msleep(15);
     }
     require(captured > 0, "Qt panel did not produce a frame");
-    auto offer = [&](QPoint point, unsigned kind, unsigned phase) {
+    auto offer = [&](QPoint point, unsigned kind, unsigned phase, QPoint origin = QPoint(-1, -1)) {
       QarvtkPanelGesture event{};
       event.peer[0] = 1;
-      event.gesture_id = 1;
+      event.gesture_id = phase == 3 ? 0 : 1;
       event.kind = kind;
       event.phase = phase;
-      event.hand = 1;
+      event.hand = 2;
       event.tap_count = kind == 1 ? 1 : 0;
       const auto &slot = controls.factory->sender->input_slot;
       event.x = int(point.x() * double(slot.content_width) / controls.widget->width());
       event.y = int(point.y() * double(slot.content_height) / controls.widget->height());
-      input.push_back(event);
+      if (origin.x() < 0)
+        origin = point;
+      const auto batch = sdk_input.offer(
+          event, int(origin.x() * double(slot.content_width) / controls.widget->width()),
+          int(origin.y() * double(slot.content_height) / controls.widget->height()), seconds());
+      for (unsigned i = 0; i < batch.count; ++i)
+        input.push_back(batch.events[i]);
       pump();
     };
     for (unsigned i = 0; i < 3; ++i) {
       auto *slider = controls.rows[i].slider;
       const auto start = slider->mapTo(controls.widget.get(), slider->rect().center());
-      offer(start, 3, 0);
-      offer(start + QPoint(90, 0), 3, 1);
-      offer(start + QPoint(90, 0), 3, 2);
+      offer(start, 0, 0);
+      // Live QAROS starts after the fingertip has already left the narrow thumb.
+      // Also recover a first update whose started event was not received.
+      offer(start + QPoint(40, 0), 3, i == 1 ? 1 : 0, start);
+      offer(start + QPoint(90, 0), 3, 1, start);
+      offer(start + QPoint(90, 0), 0, 1);
+      offer(start + QPoint(90, 0), 3, 2, start);
       require(controls.rows[i].changed && controls.rows[i].value > 20,
               "Copied drag did not move the Qt slider");
       require(!slider->isSliderDown(), "Drag release left the slider pressed");
+      const auto released_value = controls.rows[i].value;
+      offer(start + QPoint(130, 0), 0, 1);
+      require(!slider->isSliderDown() && controls.rows[i].value == released_value,
+              "Hover after release continued dragging the slider");
+      offer(start + QPoint(130, 0), 0, 2);
     }
     auto *group = new QWidget;
     auto *layout = new QVBoxLayout(group);
@@ -99,7 +129,8 @@ int main(int argc, char **argv) {
     for (int i = 0; i < 140; ++i) {
       pump();
       QThread::msleep(15);
-      if (controls.factory->sender->input_slot.content_height == unsigned(controls.widget->height()))
+      if (controls.factory->sender->input_slot.content_height ==
+          unsigned(controls.widget->height()))
         break;
     }
     require(controls.widget->height() > 252, "Playback widget was not included in the panel");
@@ -152,3 +183,4 @@ int main(int argc, char **argv) {
     return 1;
   }
 }
+#endif
