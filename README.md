@@ -35,11 +35,11 @@ Detailed steps (Czech): [docs/INSTALLATION.md](docs/INSTALLATION.md).
 2. Update this checkout (`git pull`, or **Fetch origin → Pull origin** in GitHub Desktop).
 3. Run **`UPDATE-LIVE-PLUGIN.cmd`**. It also works for the first install.
 4. On the first install, add the folder `package/windows-start/plugins/slicer` from this checkout to **Edit → Application Settings → Modules → Additional module paths**, then restart Slicer.
-5. Open **QAROS → QAROS Live Renderer**. The module must show **Live plugin r8.14**.
+5. Open **QAROS → QAROS Live Renderer**. The module must show **Live plugin r8.15**.
 
 What the updater does:
 
-- It installs package **r8.14** for the complete QAROS **0.10.0-rc.4.16+793871a8**. It finds QAROS through the Windows registry, usually `C:\Program Files\Quaternar\QAROS`.
+- It installs package **r8.15** for the complete QAROS **0.10.0-rc.4.16+793871a8**. It finds QAROS through the Windows registry, usually `C:\Program Files\Quaternar\QAROS`.
 - Qt slice controls use Slicer's Qt **5.15.2** through `qarvtk-qt-controls.dll`. The package contains the Qt integration library and its licence. The Qt runtime is supplied by Slicer.
 - It checks the SDK and the ZIP contents and backs up the original files.
 - It removes the old module, its export helpers and the Python caches from the folders it manages. It does not search other folders: if you copied a plugin by hand somewhere else, remove that path from Additional module paths.
@@ -147,7 +147,7 @@ This repository follows the shared QAROS versioning scheme: [ADR-0001: One versi
 - The **Release bump** check on each pull request fails when neither defines a bump, and shows the version merging releases.
 - Add the changelog entry under `Unreleased` in the pull request. The release is at least what its entries need: `Breaking` or `Removed` a breaking bump, `Features` or `Enhancements` a minor, `Bug fixes` a patch.
 - To merge without releasing, label the pull request `release:none`; the next releasing merge ships it.
-- The Slicer module keeps its own build label (`LIVE_VERSION`, `r8.14` in `integrations/slicer/QarosLive.py`) for now.
+- The Slicer module keeps its own build label (`LIVE_VERSION`, `r8.15` in `integrations/slicer/QarosLive.py`) for now.
 
 ## License
 

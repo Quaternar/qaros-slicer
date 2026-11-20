@@ -116,6 +116,18 @@ do not describe general pause/resume recovery as fully validated.
 
 ## Remaining live check
 
+The r8.15 guard reads the render sender's latest SDK hand stream only while a
+drag remains outstanding. The existing panel worker runs this independently of
+3D frame arrival. Each tracked fingertip is transformed back to room space using
+the volume's current app/room poses and app scale, then compared with the panel's
+subscribed pose. The first timestamp only primes the guard; later advancing
+timestamps can cancel a withdrawn contact. The release and re-entry margins
+include the fingertip radius. Old updates remain blocked until fresh re-entry,
+which presses at the current contact. Every peer/hand retains its own state.
+Cached/untracked data is ignored. This passes the real-Slicer fixture without
+an SDK drag end, including another grab without leaving the panel; live and
+physical-headset confirmation remain necessary.
+
 The r8.14 follow-up addresses motion backlog shared by the slice and animation
 controls. Continuous queued positions are coalesced for the same peer, hand,
 kind and gesture; press/release/cancel events stay ordered. The real MRML

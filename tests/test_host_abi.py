@@ -20,7 +20,8 @@ assert info == dict(host_abi=5, independent_receiver_cycles=1, stop_detaches_aud
     stable_app_tag=APP_TAG if sys.argv[2] in DEVICE_SELECTION_SDKS else "",
     max_selected_targets=8 if sys.argv[2] in DEVICE_SELECTION_SDKS else 2,
     panel_input=int(sys.argv[2] in {EXPECTED_SDK, STAGING_SDK}), panel_stream_rebind=1,
-    panel_pipeline_audience=1, panel_drag_origin=1, panel_motion_coalescing=1, header_sha256=sys.argv[2],
+    panel_pipeline_audience=1, panel_drag_origin=1, panel_motion_coalescing=1,
+    panel_contact_release=1, header_sha256=sys.argv[2],
     eye_size=104, frame_size=240, placement_size=112, volume_size=120)
 assert c.sizeof(Placement) == 112
 assert c.sizeof(Volume) == 120 and Volume.name.offset == 112

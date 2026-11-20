@@ -1,5 +1,44 @@
 # Validation and next work
 
+## Fresh fingertip release guard r8.15 (2026-11-21)
+
+The r8.14 follow-up still failed the user's live release check. The host now
+uses `qar_render_sender_last_hands` while a panel has an outstanding drag,
+independently of 3D frame arrival. The existing panel worker samples at most
+about 30 times per second; no new thread or runtime MCP polling is added.
+Sender registrations are removed under the sampling lock before their SDK
+handles are destroyed, including live receiver retirement.
+
+Tracked index tips with valid positions are converted from each volume's app
+space through its current SDK pose and scale into room space. The panel's actual
+pose is read at startup and followed through its metadata subscription.
+The first hand timestamp primes the guard; cached or non-advancing samples do
+not release anything. Withdrawal past 3 cm plus fingertip radius cancels that
+pointer. An old drag remains suppressed until a fresh contact returns within
+2 cm plus radius; it then starts at the current contact instead of its old origin.
+
+The new contact test covers cached data, hysteresis, stale re-entry, separate
+peers/hands, grazing contact and coordinate transforms. The real Slicer fixture
+passes withdrawal without SDK End, rejection of continued old drag updates,
+and re-grabbing the committed timeline thumb without leaving the panel. All
+24 CTest checks pass. Physical headset and live runtime confirmation are still
+required; unavailable or unfocused SDK hand tracking leaves the original gesture
+lifecycle in use. The automatic-pause issue remains open.
+
+Live r8.15 follow-up: the user again reported increasing latency and could not
+reliably distinguish it from a missed release. At the measured point the Slicer
+GUI report was 0.28 s old, while the QAROS receiver delivered about 2.3 FPS and
+its pipeline reported about 889 ms delay. The contact guard had recorded zero
+usable samples/releases, so it was not established as active in this test.
+The cause of unavailable samples and the broader runtime slowdown remain open;
+do not claim release or latency is fixed. The owned test was stopped for the night.
+The final completed-frame profile recorded about 370 ms in SDK frame waiting,
+18 ms in GUI work, 7 ms waiting for the GPU and 21 ms in SDK submission. The last
+GPU sample was 69 C, P8 / 300 MHz; thermal throttling is not established as the
+cause of this slowdown. No source-FPS limit was found in the launch environment.
+Next isolate a minimal 3D stream, then static Qt and slice panels, before drawing
+further conclusions about release events or adding another workaround.
+
 ## Motion backlog and release-only seek r8.14 (2026-11-21)
 
 The user reported an increasingly delayed timeline and suspected the slice

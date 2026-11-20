@@ -45,8 +45,9 @@ class SliceControls:
         if (sink.dll._qarvtk_info.get("panel_input") != 1 or
                 sink.dll._qarvtk_info.get("panel_pipeline_audience") != 1 or
                 sink.dll._qarvtk_info.get("panel_drag_origin") != 1 or
-                sink.dll._qarvtk_info.get("panel_motion_coalescing") != 1):
-            raise RuntimeError("Install the r8.14 bridge for Qt slice controls")
+                sink.dll._qarvtk_info.get("panel_motion_coalescing") != 1 or
+                sink.dll._qarvtk_info.get("panel_contact_release") != 1):
+            raise RuntimeError("Install the r8.15 bridge for Qt slice controls")
         path = Path(sink.dll._name).with_name("qarvtk-qt-controls.dll")
         self.dll = controls_library(path)
         sink.host.window.MakeCurrent()

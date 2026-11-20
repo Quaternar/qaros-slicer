@@ -35,6 +35,8 @@ def run():
     dll.qarvtk_test_panel_gesture.argtypes = [c.c_int, c.c_int, c.c_uint, c.c_uint,
                                              c.c_uint64, c.c_int, c.c_int]
     dll.qarvtk_test_panel_gesture.restype = None
+    dll.qarvtk_test_contact_sample.argtypes = [c.c_int64, c.c_double]
+    dll.qarvtk_test_contact_sample.restype = None
     error = c.create_string_buffer(2048)
     handle = dll.qarvtk_qt_controls_create(c.c_void_p(1), 0., 0., -1., error, len(error))
     assert handle, error.value
@@ -137,6 +139,32 @@ def run():
     browser.RemoveObserver(observer)
     assert not slider.sliderDown
     assert len(changes) <= 1, 'Queued movement replayed %d obsolete MRML frame changes' % len(changes)
+    browser.SetSelectedItemNumber(0)
+    pump()
+    gesture(origin + qt.QPoint(40, 0), 3, 0)
+    middle = origin + qt.QPoint(slider.width // 2, 0)
+    gesture(middle, 3, 1)
+    assert slider.sliderDown
+    dll.qarvtk_test_contact_sample(1, -.015)
+    dll.qarvtk_test_contact_sample(2, -.015)
+    dll.qarvtk_test_contact_sample(3, .055)
+    pump()
+    assert not slider.sliderDown, 'Withdrawing the fingertip did not release the actual time slider'
+    released_frame = browser.GetSelectedItemNumber()
+    gesture(origin + qt.QPoint(slider.width - 40, 0), 3, 1)
+    assert not slider.sliderDown and browser.GetSelectedItemNumber() == released_frame
+    dll.qarvtk_test_contact_sample(4, .005)
+    # An integer timeline snaps its thumb to the committed frame on release.
+    reentry = origin + qt.QPoint(round((slider.width - 44) *
+                                      (slider.value - slider.minimum) /
+                                      (slider.maximum - slider.minimum)), 0)
+    gesture(reentry, 3, 1)
+    assert slider.sliderDown, 'A new contact could not grab the slider without leaving the panel'
+    gesture(origin + qt.QPoint(slider.width - 40, 0), 3, 1)
+    dll.qarvtk_test_contact_sample(5, .055)
+    pump()
+    assert not slider.sliderDown and browser.GetSelectedItemNumber() > released_frame
+    gesture(origin, 3, 2)
     controls.close()
     dll.qarvtk_qt_controls_destroy(handle)
     print('PASS: native Stop callbacks and actual MRML time-slider drag/release/hover', flush=True)

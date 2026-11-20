@@ -393,7 +393,7 @@ struct QarvtkHost {
     std::filesystem::create_directories(std::filesystem::u8path(log_folder));
     log.open(std::filesystem::u8path(log_folder)/"host-bridge.log",std::ios::app);
     if(!log)throw std::runtime_error("Cannot open host bridge log");
-    log<<"Host build: installed-hub-update-r8.14 (ABI 5); SDK header " QARVTK_HOST_SDK_HASH<<std::endl;
+    log<<"Host build: installed-hub-update-r8.15 (ABI 5); SDK header " QARVTK_HOST_SDK_HASH<<std::endl;
     log<<"SDK root: "<<sdk_root<<std::endl;
     log<<"Target mode: "<<target<<"; workspaces="<<volumes.size()<<std::endl;
     if(!asynchronous_copies)copying=std::make_unique<qarvtk::HostSharedWgl>(dc,host_context);
@@ -567,7 +567,7 @@ struct Session {
 #endif
     // Detach while the old producer still exists. Otherwise a mixer can start
     // reconnecting to a sender we have just destroyed before seeing Stop.
-    for(auto& stream:streams)if(stream.sender)qar_render_stream_handle_destroy(stream.sender);
+    for(auto& stream:streams)if(stream.sender){host.panels->remove_hand_source(stream.sender);qar_render_stream_handle_destroy(stream.sender);}
     // The connected Hub keeps its stable workspaces with no audience until
     // Disconnect. Legacy standalone sessions still close their own volumes.
     for(auto& volume:volumes)if(volume.created&&!host.hub)qar_app_volumes_close_volume(session,&volume.id);
@@ -789,7 +789,7 @@ struct Session {
         const auto result=qar_app_volumes_update_used_by_peers(session,&volumes[v].id,nullptr,0,&peer,1);
         if(!qar_result_is_success(result))error="Unable to remove receiver from workspace audience";
 #endif
-        if(stream.sender){qar_render_stream_handle_destroy(stream.sender);stream.sender=nullptr;}
+        if(stream.sender){host.panels->remove_hand_source(stream.sender);qar_render_stream_handle_destroy(stream.sender);stream.sender=nullptr;}
       }
       if(!error.empty())throw std::runtime_error(error);
     });
@@ -937,6 +937,7 @@ struct Session {
       const auto route=routes.address(i);
       const auto label=target_label(route.target);
       auto* sender=stream.sender;
+      host.panels->add_hand_source(session,sender,volumes[route.volume].id,targets[route.target].peer);
       host.render_queue->enable(i);
       stream.pump=std::make_unique<ReceiverPump>();
       stream.pump->start([this,i,sender,label](ReceiverPump& pump){pump_stream(i,sender,label,pump);});
@@ -1274,7 +1275,7 @@ const char* qarvtk_host_info(){
 #else
     "0"
 #endif
-    ",\"panel_stream_rebind\":1,\"panel_pipeline_audience\":1,\"panel_drag_origin\":1,\"panel_motion_coalescing\":1,\"header_sha256\":\"" QARVTK_HOST_SDK_HASH "\",\"eye_size\":104,\"frame_size\":240,\"placement_size\":112,\"volume_size\":120}";
+    ",\"panel_stream_rebind\":1,\"panel_pipeline_audience\":1,\"panel_drag_origin\":1,\"panel_motion_coalescing\":1,\"panel_contact_release\":1,\"header_sha256\":\"" QARVTK_HOST_SDK_HASH "\",\"eye_size\":104,\"frame_size\":240,\"placement_size\":112,\"volume_size\":120}";
 }
 int qarvtk_hub_connect(const char* sdk,const char* folder,QarvtkHub** result,char* error,uint32_t size){
   if(result)*result=nullptr;

@@ -45,7 +45,8 @@ inline QarResult register_host_panel(QarSession *session, const QarGuiPanelInit 
 // any pixels. Keep a non-display source observer in desired, so removal can
 // never turn the list into QAROS's broadcast-to-everyone empty audience.
 inline QarResult apply_host_panel_audience(QarSession *session, const QarGuiPanelId &id,
-                                           const std::vector<QarPeerId> &desired) {
+                                           const std::vector<QarPeerId> &desired,
+                                           QarPose *pose = nullptr) {
   if (desired.empty())
     return {QAR_STATUS_LOGIC_ERROR, 0};
   std::vector<const QarPeerId *> additions;
@@ -83,6 +84,10 @@ inline QarResult apply_host_panel_audience(QarSession *session, const QarGuiPane
       return result;
     if (std::memcmp(candidate.data, id.data, sizeof(id.data)))
       continue;
+    if (pose) {
+      result = qar_gui_panel_get_pose(handles.values[i], pose);
+      if (!qar_result_is_success(result)) return result;
+    }
     size_t peers_count{};
     result = qar_gui_panel_get_visible_to_peers_count(handles.values[i], &peers_count);
     if (!qar_result_is_success(result))

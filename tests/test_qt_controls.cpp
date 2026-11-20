@@ -1,5 +1,6 @@
 // Exercise the production Qt event path with copied SDK gestures and an in-memory sender.
 #include "../src/qt_slice_controls.cpp"
+#include "qarvtk/host_panel_contact.hpp"
 #include "qarvtk/host_panel_input.hpp"
 #include <QPushButton>
 #include <QThread>
@@ -14,6 +15,7 @@ std::deque<QarvtkPanelGesture> input;
 uint64_t input_epoch = 1;
 unsigned captured{};
 qarvtk::HostPanelInput sdk_input;
+qarvtk::HostPanelContact contact;
 void require(bool condition, const char *text) {
   if (!condition)
     throw std::runtime_error(text);
@@ -48,8 +50,9 @@ int qarvtk_host_panel_gestures(QarvtkHost *, QarvtkHostPanel *, QarvtkPanelGestu
 }
 }
 #if defined(QARVTK_QT_CONTROLS_FIXTURE)
-extern "C" __declspec(dllexport) void qarvtk_test_panel_gesture(
-    int x, int y, unsigned kind, unsigned phase, uint64_t id, int origin_x, int origin_y) {
+extern "C" __declspec(dllexport) void qarvtk_test_panel_gesture(int x, int y, unsigned kind,
+                                                                unsigned phase, uint64_t id,
+                                                                int origin_x, int origin_y) {
   QarvtkPanelGesture event{};
   event.peer[0] = 1;
   event.gesture_id = id;
@@ -59,9 +62,27 @@ extern "C" __declspec(dllexport) void qarvtk_test_panel_gesture(
   event.tap_count = kind == 1 ? 1 : 0;
   event.x = x;
   event.y = y;
+  const auto decision = contact.offer(event, seconds());
+  if (decision == qarvtk::HostPanelContact::Decision::drop)
+    return;
+  if (decision == qarvtk::HostPanelContact::Decision::repress) {
+    event.phase = 0;
+    origin_x = x;
+    origin_y = y;
+  }
   const auto batch = sdk_input.offer(event, origin_x, origin_y, seconds());
   for (unsigned i = 0; i < batch.count; ++i)
     qarvtk::enqueue_panel_input(input, batch.events[i]);
+}
+extern "C" __declspec(dllexport) void qarvtk_test_contact_sample(int64_t timestamp,
+                                                                 double distance) {
+  uint8_t peer[16]{};
+  peer[0] = 1;
+  const auto canceled = contact.sample(peer, 2, timestamp, distance, seconds());
+  if (canceled) {
+    sdk_input.cancel(*canceled);
+    qarvtk::enqueue_panel_input(input, *canceled);
+  }
 }
 extern "C" __declspec(dllexport) void qarvtk_test_panel_tap(int x, int y) {
   QarvtkPanelGesture event{};
@@ -197,10 +218,16 @@ int main(int argc, char **argv) {
     require(clicked, "Copied tap did not reach the embedded native Qt button");
     controls.add_row("Red2", "#ff7777");
     controls.update(3, -100, 100, 1, 0, true);
-    for (int i = 0; i < 30; ++i) {
+    for (int i = 0; i < 140; ++i) {
       pump();
       QThread::msleep(15);
+      if (controls.factory->sender->input_slot.content_height ==
+              unsigned(controls.widget->height()) &&
+          !controls.manager->diagnostics().panels.front().resize_pending)
+        break;
     }
+    require(controls.factory->sender->input_slot.content_height == unsigned(controls.widget->height()),
+            "Further slice layout did not finish resizing its input geometry");
     auto *extra = controls.rows[3].slider;
     const auto extra_start = extra->mapTo(controls.widget.get(), extra->rect().center());
     offer(extra_start, 3, 0);

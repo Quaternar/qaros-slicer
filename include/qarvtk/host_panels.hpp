@@ -31,6 +31,10 @@ public:
   void add_peers(const std::vector<QarPeerId>&);
   // Exact live audience. Empty hides panels and suspends input, never broadcasts.
   void set_peers(const std::vector<QarPeerId>&,const std::vector<QarPeerId>& visibility={},const std::string& scope_note={});
+  // Uses cached SDK hand data only while an interactive drag is outstanding.
+  void sample_hands(QarSession*,QarRenderSender*,const QarAppVolumeId&,const QarPeerId&);
+  void add_hand_source(QarSession*,QarRenderSender*,const QarAppVolumeId&,const QarPeerId&);
+  void remove_hand_source(QarRenderSender*);
   void request_stop();
   void join(); // SDK-owning worker calls this before session destruction.
 };

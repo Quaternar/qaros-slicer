@@ -49,6 +49,15 @@ public:
   };
   HostPanelInput() { drags_.reserve(16); }
   void reset() { drags_.clear(); }
+  void cancel(const QarvtkPanelGesture &event) {
+    drags_.erase(std::remove_if(drags_.begin(), drags_.end(),
+                                [&](const auto &drag) {
+                                  return drag.event.hand == event.hand &&
+                                         !std::memcmp(drag.event.peer, event.peer,
+                                                      sizeof(event.peer));
+                                }),
+                 drags_.end());
+  }
   Batch offer(const QarvtkPanelGesture &event, int start_x, int start_y, double now) {
     Batch batch;
     batch.events[0] = event;

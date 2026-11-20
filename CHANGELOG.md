@@ -35,6 +35,13 @@ behaviour is released at once: CI moves the `Unreleased` entries under the new v
 
 ### Bug fixes
 
+- Slicer Live r8.15 adds a release guard using fresh SDK fingertip data
+  when the finger withdraws, suppresses further updates from that old contact,
+  and allows another contact without leaving the panel. Contacts remain separate
+  for each receiver and hand. Cached or unavailable tracking does not invent a
+  release; sampling runs only for outstanding drags on the existing panel worker.
+  Live release/latency validation remains open.
+
 - Slicer Live r8.14 coalesces pending hover/drag positions for every slice and
   playback control while preserving press/release/cancel boundaries. Slow GUI
   work no longer requires replaying all obsolete movement samples. The native
