@@ -41,7 +41,7 @@ class SliceControls:
         self.states = {}
         self.names = []
         if sink.dll._qarvtk_info.get("panel_input") != 1:
-            raise RuntimeError("Install the r8.11 bridge for Qt slice controls")
+            raise RuntimeError("Install the r8.12 bridge for Qt slice controls")
         path = Path(sink.dll._name).with_name("qarvtk-qt-controls.dll")
         self.dll = controls_library(path)
         sink.host.window.MakeCurrent()

@@ -1,5 +1,36 @@
 # Validation and next work
 
+## Retained video panel repair r8.12 (2026-11-20)
+
+Reproduced the black-panel failure with the installed r8.11 package by
+interrupting an owned Slicer test process and reopening the same scene and
+panel identities. The 3D volume was decoded, but all four panels were black.
+Each retained panel still named the previous run's stream; the new senders
+waited for panel receivers.
+
+r8.12 explicitly calls `qar_gui_panels_set_stream` after registration and
+restores the panel's visible state. With the same retained panel identities,
+all four stream IDs matched their new senders and actual decoded slice and
+Qt pixels were visible in the Visualizer. No manual panel deletion was
+needed. The calls run at startup, outside the capture/render loop.
+
+- All 23 main CTest checks passed, including fresh/retained stream binding,
+  restoring hidden state and failure propagation for cleanup.
+- The Windows updater fixture passed; the r8.12 package is installed locally.
+- The existing Qt input test exercises the real native sliders with copied
+  gestures. It does not prove that QAROS publishes physical gestures.
+
+The input investigation remains open. During a separate 35-second
+Visualizer measurement, the index fingertip reached 15.1 mm behind the
+controls panel plane during a user-held press. The contact ring appeared,
+but the native subscription's `received` counter remained zero and
+`viz_hand_targets` contained no GUI-panel events for that video panel.
+A temporary website panel placed at the same pose did publish hover events;
+the streamed Qt panel did not. This localizes the observed failure before
+Qt injection, but does not establish the internal QAROS cause. Physical
+headset input still needs verification after the event-delivery problem is
+resolved. See [the reproduction report](QAROS_VIDEO_PANEL_INPUT.md).
+
 ## Native playback and event-driven Qt controls r8.11 (2026-11-20)
 
 The existing Qt panel now adopts instances of Slicer's

@@ -174,7 +174,8 @@ struct PanelStream {
 #else
     log("PANEL_CREATE_BEGIN name="+panel.name);
 #endif
-    checked(register_host_panel(session,gui,id,created),"register slice preview panel and apply physical size");
+    checked(register_host_panel(session,gui,id,created,&stream_id),"register panel, bind current video stream and show it");
+    log("PANEL_STREAM_BOUND name="+panel.name+" stream="+id_text(stream_id));
     log("PANEL_SIZE_APPLIED name="+panel.name+" width_m="+std::to_string(gui.size.width_meters)+
         " height_m="+std::to_string(gui.size.height_meters)+" diagonal_inches="+
         std::to_string(std::hypot(gui.size.width_meters,gui.size.height_meters)/.0254));

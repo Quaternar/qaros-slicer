@@ -38,6 +38,11 @@ Dotyk panelu se předává do Qt jako vstup myši. Vzdálené ukazování a sví
 prstů tato integrace nepřevádí na tažení. Stav **Qt** v pluginu uvádí počet
 přijatých, přijatelných a odfiltrovaných gest pro diagnostiku vstupu.
 
+Ve verzi QAROS 0.10.0-rc.4.16 zatím není skutečné ovládání tohoto video
+panelu rukou ověřené: při testu ve Visualizeru se zobrazil dotykový kroužek,
+ale plugin nepřijal žádné gesto. Samotný obraz panelu a propojení Qt se
+Slicerem fungují. Podrobnosti oddělených testů jsou v [VALIDATION.md](VALIDATION.md).
+
 Qt ovladače používají Qt 5.15.2 dodané se Slicerem 5.12.4. Balíček obsahuje
 samostatnou knihovnu `qarvtk-qt-controls.dll` a licenci knihovny qaros-qt.
 
@@ -117,7 +122,7 @@ Jeho nový Live plugin se připravuje v [PR #4](https://github.com/HonzaHovora/Q
 
 ## Když se něco nepovede
 
-Aktuální modul ukazuje **Live plugin r8.11**; najetím na tento řádek zjistíš
+Aktuální modul ukazuje **Live plugin r8.12**; najetím na tento řádek zjistíš
 cestu skutečně načteného souboru. Po Pull vždy spusť `UPDATE-LIVE-PLUGIN.cmd`
 se zavřeným Slicerem. Nastavení 14″ je od r8.3 předané explicitně i již
 existujícímu panelu. U náhledů se skrývají rohové anotace řezů i ve Sliceru;
@@ -129,6 +134,8 @@ po Stop se obnoví. Podrobnosti jsou v [popisu aktualizace](QAROS_DEV3184_UPDATE
 | Vidíš i starý QAROS Streaming | Odeber cestu k jiné staré kopii pluginu, nepřidávej zálohu. |
 | SDK / DLL mismatch | Kompletní QAROS 0.10.0-rc.4.16 a DLL z téhož Live balíčku. |
 | Start bez obrazu | Receiver nebo připojený headset, správný Stream to, schválení v Hubu. |
+| Objem funguje, panely po restartu zůstaly černé | Nainstaluj r8.12: při opětovném použití panelu explicitně připojí aktuální video stream. Ve Visualizeru byla oprava ověřena i po přerušené relaci. |
+| Dotykový kroužek se zobrazuje, slider nereaguje | Zkontroluj `input received` ve stavu Qt. Nula znamená, že SDK pluginu nepředalo žádné gesto; samotný kroužek nepotvrzuje doručení vstupu do Qt. |
 | Po Stop/Start není obraz | Ulož logy aktuálního pokusu. Dřívější workaround byl vytvořit nový receiver a stream restartovat; oprava v dev.3184 zatím není ověřena. |
 | Nepodporovaný mapper nebo režim objemu | Pro Live CT/MR použij podporovaný VTK GPU Composite; ověř nejdřív jednoduchou scénu. |
 
