@@ -24,6 +24,20 @@ polohu odpovídajícího řezu. Pole s hodnotou ukazuje milimetry a nabízí tak
 krokování šipkami. Změna se přenese do Sliceru a změna ve Sliceru zpět do
 panelu. Ovládání se vztahuje na receivery vybrané v **Stream to**.
 
+Ovladače sledují skutečné řezové pohledy, až osm současně. Více objemů může
+sdílet stejné pohledy; nezávislé roviny vyžadují další pohledy v rozložení
+Sliceru. V panelu se objeví i jejich posuvníky.
+
+Pokud scéna obsahuje sekvenci, pod řezy se zobrazí **Sequence playback**.
+Vyber příslušnou sekvenci a použij původní Qt ovladače Sliceru pro
+přehrávání/pauzu, krokování, první/poslední snímek, rychlost a časový posuvník.
+**Stop** pozastaví přehrávání a vrátí první snímek. Přehrává se stejný
+Sequence Browser jako ve Sliceru, bez kopie dat a dalšího streamu ovladačů.
+
+Dotyk panelu se předává do Qt jako vstup myši. Vzdálené ukazování a svírání
+prstů tato integrace nepřevádí na tažení. Stav **Qt** v pluginu uvádí počet
+přijatých, přijatelných a odfiltrovaných gest pro diagnostiku vstupu.
+
 Qt ovladače používají Qt 5.15.2 dodané se Slicerem 5.12.4. Balíček obsahuje
 samostatnou knihovnu `qarvtk-qt-controls.dll` a licenci knihovny qaros-qt.
 
@@ -103,7 +117,7 @@ Jeho nový Live plugin se připravuje v [PR #4](https://github.com/HonzaHovora/Q
 
 ## Když se něco nepovede
 
-Aktuální modul ukazuje **Live plugin r8.10**; najetím na tento řádek zjistíš
+Aktuální modul ukazuje **Live plugin r8.11**; najetím na tento řádek zjistíš
 cestu skutečně načteného souboru. Po Pull vždy spusť `UPDATE-LIVE-PLUGIN.cmd`
 se zavřeným Slicerem. Nastavení 14″ je od r8.3 předané explicitně i již
 existujícímu panelu. U náhledů se skrývají rohové anotace řezů i ve Sliceru;

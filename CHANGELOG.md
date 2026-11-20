@@ -11,6 +11,12 @@ behaviour is released at once: CI moves the `Unreleased` entries under the new v
 
 ### Features
 
+- Slicer Live r8.11 embeds Slicer's native sequence playback and seek widgets
+  in the slice controls panel, with sequence selection and Stop. Slice sliders
+  follow up to eight open slice views. Qt capture is driven by widget updates;
+  unchanged controls use no repeated image uploads. The Qt status includes
+  input counters for troubleshooting headset gestures.
+
 - Slicer Live r8.10 adds a Qt **Slice controls** panel with Red, Yellow and Green
   sliders and millimetre values. AR gestures reach Qt widgets through qaros-qt,
   and values synchronize with Slicer's own slice offset sliders. Enable

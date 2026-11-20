@@ -9,7 +9,7 @@ import ctk
 import slicer
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule, ScriptedLoadableModuleWidget
 
-LIVE_VERSION = "r8.10"
+LIVE_VERSION = "r8.11"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 if (Path(__file__).resolve().parent / "QarosVTKLib").is_dir():
@@ -106,7 +106,7 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
         form.addRow(self.slicePreviews)
         self.sliceControls = qt.QCheckBox("Show Qt slice controls in glasses")
         self.sliceControls.checked = True
-        self.sliceControls.toolTip = "Requires slice image panels. Drag Red, Yellow and Green sliders in the Slice controls panel. Values stay synchronized with Slicer. Applied at Start."
+        self.sliceControls.toolTip = "Requires slice image panels. Touch and drag the sliders for the open slice views. Native Slicer sequence playback controls appear for animated data. Values stay synchronized with Slicer. Applied at Start."
         form.addRow(self.sliceControls)
         self.slicePreviews.connect("toggled(bool)", lambda checked: self.update_controls())
         self.sliceFps = qt.QComboBox()

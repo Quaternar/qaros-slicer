@@ -304,6 +304,13 @@ class SlicePanels:
                 self.controls = None
         now = self.clock()
         if now >= self.next_refresh:
+            if self.controls:
+                try:
+                    self.controls.refresh_views()
+                except Exception as error:
+                    self.errors["Controls"] = str(error)
+                    self.controls.close()
+                    self.controls = None
             self.refresh()
             self.next_refresh = now + .25
         # Fair rotation; at most one GPU capture in a GUI timer turn. Video
@@ -328,6 +335,8 @@ class SlicePanels:
         if now >= self.next_status:
             labels = [name + ": " + (self.sink.panel_status(s.handle) if s.visible else "hidden")
                       for name, s in self.sources.items()]
+            if self.controls:
+                labels.append("Qt: " + self.controls.status())
             labels += [name + ": " + error for name, error in self.errors.items()]
             self.status = "; ".join(labels) if labels else "No visible slice views in this layout"
             self.next_status = now + 1

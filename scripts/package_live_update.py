@@ -9,8 +9,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SDK_SHA = '231b63f8bd59e126ae199223e31c5efabf36eefbca36cd4ab5fb375991837a77'
-BUILD = 'installed-hub-update-r8.10'
-NATIVE_BUILD = 'installed-hub-update-r8.10'
+BUILD = 'installed-hub-update-r8.11'
+NATIVE_BUILD = 'installed-hub-update-r8.11'
 
 
 def package(dll, qt_dll, output, compiler):
@@ -50,6 +50,9 @@ def package(dll, qt_dll, output, compiler):
             struct.unpack_from('<H', qt_native, qt_offset + 4)[0] != 0x8664 or
             b'qarvtk_qt_controls_create' not in qt_native or b'qarvtk_qt_version' not in qt_native):
         raise ValueError('Expected a Windows x64 Qt slice controls DLL')
+    for symbol in (b'qarvtk_qt_controls_attach_playback', b'qarvtk_qt_controls_add_slice', b'qarvtk_qt_controls_status'):
+        if symbol not in qt_native:
+            raise ValueError('Qt bridge lacks native sequence controls or view selection')
     payload = {'Release/qarvtk-host.dll': native,
                'Release/qarvtk-qt-controls.dll': qt_native,
                'licenses/qaros-qt-LICENSE.txt': (ROOT / 'external/qaros-qt/LICENSE').read_bytes(),
@@ -74,7 +77,7 @@ def package(dll, qt_dll, output, compiler):
                 performance_fps_gain_established=False,
                 performance_report='docs/SLICER_RENDER_PERFORMANCE.md',
                 receiver_creation='visualizer_mcp',
-                qt_slice_controls=1, qt_version='5.15.2',
+                qt_slice_controls=1, qt_playback_controls=1, qt_controls_event_driven=1, qt_version='5.15.2',
                 stable_app_tag='slicer.qaros.quaternar', max_selected_targets=8,
                 max_visualizer_targets=8, max_headset_targets=8,
                 runtime_teardown='handle_only',
@@ -88,7 +91,7 @@ def package(dll, qt_dll, output, compiler):
     archive_path = output / 'qarvtk-live-0.10.0-rc.4.16.zip'
     with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as archive:
         for name, data in sorted(payload.items()):
-            entry = zipfile.ZipInfo(name, (2026, 11, 19, 0, 0, 0))
+            entry = zipfile.ZipInfo(name, (2026, 11, 20, 0, 0, 0))
             entry.compress_type = zipfile.ZIP_DEFLATED
             entry.external_attr = 0o100644 << 16
             archive.writestr(entry, data)

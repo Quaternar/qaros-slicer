@@ -1,5 +1,40 @@
 # Validation and next work
 
+## Native playback and event-driven Qt controls r8.11 (2026-11-20)
+
+The existing Qt panel now adopts instances of Slicer's
+`qMRMLSequenceBrowserPlayWidget` and `qMRMLSequenceBrowserSeekWidget`, bound
+directly to the selected MRML Sequence Browser. Stop pauses and returns to
+the first frame. No second playback engine, data copy or controls stream is
+created. Recording controls are hidden.
+
+- All 23 main CTest checks passed. The new copied-gesture test drags the
+  actual Qt sliders, taps a native child button, adds a fourth slice row and
+  cancels a held pointer on pause. An unchanged panel neither repaints nor
+  uploads additional frames during the idle measurement.
+- The isolated Slicer test passed native Play/Pause, first/last, seek, Stop,
+  changing the selected browser, and the corresponding proxy-volume data.
+- The real Slicer/SDK test passed two receiver streams, live receiver
+  selection and pause/resume, three slice videos, bidirectional slice
+  controls and native sequence playback through the same active proxy.
+  A further independent Red2 view synchronized with its own control and
+  delivered a fourth video. All four videos resumed after empty selection.
+- The PowerShell 5.1 updater fixture passed fresh install, backup, rollback
+  and SDK mismatch rejection. r8.11 is installed locally.
+
+Capture is triggered by Qt update events and paced to at most 15 FPS. Input
+is drained independently on the host GUI timer. A retained latest image is
+retried if GPU upload was busy, without repainting the widget. Rows follow
+actual slice views, up to the same eight-view limit as the video previews;
+several volumes may share these views or use independent planes in another
+layout.
+
+The first physical headset test showed the panel but did not move sliders,
+including with direct touch. This remains under investigation. The Qt
+status now reports received, accepted, filtered and invalid SDK gestures,
+so recognition/subscription problems can be separated from Qt routing.
+Successful synthetic input is not evidence that physical input works.
+
 ## Qt slice controls in Slicer Live r8.10 (2026-11-19)
 
 A separate Qt 5.15.2 bridge uses the official qaros-qt core at `14c18c00`.

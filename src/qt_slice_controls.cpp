@@ -3,6 +3,7 @@
 #include <QDoubleSpinBox>
 #include <QGridLayout>
 #include <QLabel>
+#include <QPointer>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <algorithm>
@@ -55,6 +56,7 @@ class Sender final : public seam::IPanelSender {
 
 public:
   seam::GestureSlot input_slot;
+  bool flush_pending() { return flush(); }
   Sender(QarvtkHost *host, const seam::PanelDesc &desc) : host_(host) {
     input_slot = {panel_key, desc.content_width ? desc.content_width : desc.buffer_width,
                   desc.content_height ? desc.content_height : desc.buffer_height};
@@ -132,15 +134,47 @@ struct Row {
   double minimum{}, maximum{}, value{};
   bool changed{};
 };
+class DirtyMonitor final : public QObject {
+  QWidget *root_;
+  bool &dirty_, &capturing_;
+
+public:
+  DirtyMonitor(QWidget *root, bool &dirty, bool &capturing)
+      : root_(root), dirty_(dirty), capturing_(capturing) {
+    qApp->installEventFilter(this);
+  }
+  ~DirtyMonitor() override { qApp->removeEventFilter(this); }
+  bool eventFilter(QObject *object, QEvent *event) override {
+    if (capturing_)
+      return false;
+    const auto type = event->type();
+    if (type != QEvent::UpdateRequest && type != QEvent::Show && type != QEvent::Hide &&
+        type != QEvent::Resize && type != QEvent::LayoutRequest && type != QEvent::EnabledChange)
+      return false;
+    for (auto *owner = object; owner; owner = owner->parent())
+      if (owner == root_) {
+        dirty_ = true;
+        break;
+      }
+    return false;
+  }
+};
 struct Controls {
   QarvtkHost *host;
-  std::array<Row, 3> rows;
+  std::vector<Row> rows;
   std::unique_ptr<QWidget> widget;
+  QGridLayout *layout{};
   std::shared_ptr<Factory> factory;
   std::unique_ptr<qtpanels::QtPanelStreamManager> manager;
   seam::PanelGestureMapper mapper;
   uint64_t epoch{};
   bool active = true;
+  QPointer<QWidget> playback;
+  bool playback_visible{};
+  bool dirty = true, capturing{};
+  double last_capture{};
+  uint64_t captured_frames{};
+  std::unique_ptr<DirtyMonitor> monitor;
   explicit Controls(QarvtkHost *h, double x, double y, double z)
       : host(h), widget(std::make_unique<QWidget>()) {
     if (!qobject_cast<QApplication *>(QCoreApplication::instance()))
@@ -151,44 +185,12 @@ struct Controls {
         "QWidget {background:#202735;color:white;font-size:18px;} QSlider::groove:horizontal "
         "{height:12px;background:#586477;} QSlider::handle:horizontal {width:28px;margin:-12px "
         "0;background:#e6eaf0;border-radius:7px;} QDoubleSpinBox {min-height:38px;}");
-    auto *layout = new QGridLayout(widget.get());
+    layout = new QGridLayout(widget.get());
     layout->setContentsMargins(18, 12, 18, 12);
     layout->setHorizontalSpacing(16);
-    const std::array<const char *, 3> names = {"Red", "Yellow", "Green"};
-    const std::array<const char *, 3> colors = {"#ff7777", "#ffe066", "#75df9b"};
-    for (std::size_t i = 0; i < rows.size(); ++i) {
-      auto &row = rows[i];
-      row.name = new QLabel(names[i], widget.get());
-      row.name->setStyleSheet(QString("color:%1;").arg(colors[i]));
-      row.slider = new QSlider(Qt::Horizontal, widget.get());
-      row.slider->setRange(0, 10000);
-      row.slider->setMinimumHeight(48);
-      row.number = new QDoubleSpinBox(widget.get());
-      row.number->setDecimals(3);
-      row.number->setSuffix(" mm");
-      row.number->setFixedWidth(150);
-      row.slider->setObjectName(QString("sliceSlider%1").arg(i));
-      layout->addWidget(row.name, int(i), 0);
-      layout->addWidget(row.slider, int(i), 1);
-      layout->addWidget(row.number, int(i), 2);
-      QObject::connect(row.slider, &QSlider::valueChanged, widget.get(), [this, i](int tick) {
-        auto &row = rows[i];
-        row.value = row.minimum + (row.maximum - row.minimum) * tick / 10000.;
-        row.changed = true;
-        QSignalBlocker blocked(row.number);
-        row.number->setValue(row.value);
-      });
-      QObject::connect(row.number, qOverload<double>(&QDoubleSpinBox::valueChanged), widget.get(),
-                       [this, i](double value) {
-                         auto &row = rows[i];
-                         row.value = value;
-                         row.changed = true;
-                         QSignalBlocker blocked(row.slider);
-                         row.slider->setValue(to_tick(row, value));
-                       });
-    }
     widget->setObjectName("qarvtkSliceControls");
     qtpanels::show_offscreen(widget.get(), 640, 252);
+    monitor = std::make_unique<DirtyMonitor>(widget.get(), dirty, capturing);
     factory = std::make_shared<Factory>(host);
     qtpanels::QtPanelStreamingConfig config;
     config.panel_sender_factory = factory;
@@ -205,6 +207,49 @@ struct Controls {
     if (!added.ok())
       throw std::runtime_error(added.message);
   }
+  unsigned add_row(const char *name, const char *color) {
+    if (rows.size() >= 8)
+      throw std::invalid_argument("At most eight slice views are supported");
+    const auto i = rows.size();
+    if (playback)
+      layout->removeWidget(playback);
+    rows.emplace_back();
+    auto &row = rows.back();
+    row.name = new QLabel(QString::fromUtf8(name), widget.get());
+    row.name->setStyleSheet(QString("color:%1;").arg(QString::fromUtf8(color)));
+    row.slider = new QSlider(Qt::Horizontal, widget.get());
+    row.slider->setRange(0, 10000);
+    row.slider->setMinimumHeight(48);
+    row.slider->setEnabled(false);
+    row.number = new QDoubleSpinBox(widget.get());
+    row.number->setDecimals(3);
+    row.number->setSuffix(" mm");
+    row.number->setFixedWidth(150);
+    row.number->setEnabled(false);
+    row.slider->setObjectName(QString("sliceSlider%1").arg(i));
+    layout->addWidget(row.name, int(i), 0);
+    layout->addWidget(row.slider, int(i), 1);
+    layout->addWidget(row.number, int(i), 2);
+    QObject::connect(row.slider, &QSlider::valueChanged, widget.get(), [this, i](int tick) {
+      auto &row = rows[i];
+      row.value = row.minimum + (row.maximum - row.minimum) * tick / 10000.;
+      row.changed = true;
+      QSignalBlocker blocked(row.number);
+      row.number->setValue(row.value);
+    });
+    QObject::connect(row.number, qOverload<double>(&QDoubleSpinBox::valueChanged), widget.get(),
+                     [this, i](double value) {
+                       auto &row = rows[i];
+                       row.value = value;
+                       row.changed = true;
+                       QSignalBlocker blocked(row.slider);
+                       row.slider->setValue(to_tick(row, value));
+                     });
+    if (playback)
+      layout->addWidget(playback, int(rows.size()), 0, 1, 3);
+    resize();
+    return unsigned(i);
+  }
   ~Controls() {
     manager.reset();
     factory.reset();
@@ -214,6 +259,36 @@ struct Controls {
       return 0;
     return int(std::lround(
         std::clamp((value - row.minimum) / (row.maximum - row.minimum) * 10000., 0., 10000.)));
+  }
+  void attach_playback(QWidget *child) {
+    if (!child || playback)
+      throw std::invalid_argument("Expected one sequence controls widget");
+    playback = child;
+    layout->addWidget(child, int(rows.size()), 0, 1, 3);
+    child->hide();
+  }
+  void show_playback(bool visible) {
+    if (!playback || visible == playback_visible)
+      return;
+    playback_visible = visible;
+    playback->setVisible(visible);
+    resize();
+  }
+  void resize() {
+    const int base = std::max(252, 72 + int(rows.size()) * 60);
+    widget->setFixedHeight(
+        std::min(768, base + (playback_visible && playback
+                                  ? std::max(150, playback->sizeHint().height()) + 16
+                                  : 0)));
+    dirty = true;
+  }
+  std::string status() const {
+    if (!factory->sender || !factory->sender->panel())
+      return "Waiting for Qt panel";
+    char status[2048]{};
+    qarvtk_host_panel_status(host, factory->sender->panel(), status, sizeof(status));
+    const auto stats = mapper.stats();
+    return std::string(status) + "; mapped=" + std::to_string(stats.events_received);
   }
   void update(unsigned index, double minimum, double maximum, double step, double value,
               bool enabled) {
@@ -235,6 +310,7 @@ struct Controls {
         maximum > minimum
             ? int(std::lround(std::clamp(step / (maximum - minimum) * 10000., 1., 10000.)))
             : 1);
+    dirty = true;
   }
   unsigned tick(bool enabled) {
     if (active != enabled) {
@@ -244,9 +320,8 @@ struct Controls {
         manager->handle_sample(sample);
       manager->set_panel_ar_visible(panel_key, enabled);
       active = enabled;
+      dirty = true;
     }
-    if (!active)
-      return manager->tick();
     if (factory->sender && factory->sender->panel()) {
       std::array<QarvtkPanelGesture, 128> events{};
       uint64_t current_epoch{};
@@ -262,7 +337,9 @@ struct Controls {
       mapper.sweep_lifecycles(seconds(), canceled);
       for (const auto &sample : canceled)
         manager->handle_sample(sample);
-      for (int i = 0; i < count; ++i) {
+      if (count)
+        dirty = true;
+      for (int i = 0; active && i < count; ++i) {
         const auto &raw = events[i];
         seam::PanelGestureEvent event;
         std::memcpy(event.peer.data, raw.peer, sizeof(raw.peer));
@@ -279,7 +356,32 @@ struct Controls {
           manager->handle_sample(sample);
       }
     }
-    const auto submitted = manager->tick();
+    unsigned submitted{};
+    const auto now = seconds();
+    if (dirty && now - last_capture >= 1. / 15.) {
+      dirty = false;
+      capturing = true;
+      try {
+        submitted = manager->tick();
+      } catch (...) {
+        capturing = false;
+        throw;
+      }
+      capturing = false;
+      last_capture = now;
+      const auto snapshot = manager->diagnostics();
+      const auto frames = snapshot.panels.empty() ? 0 : snapshot.panels.front().frames_captured;
+      // The library has its own pacing gate. A tick it paces away must not
+      // consume the only dirty notification (notably during a resize).
+      if (!factory->sender ||
+          (active && frames == captured_frames) ||
+          (!snapshot.panels.empty() && snapshot.panels.front().resize_pending))
+        dirty = true;
+      captured_frames = frames;
+    }
+    // A busy GPU upload retains only the latest image and is retried without repainting Qt.
+    if (factory->sender && !factory->sender->flush_pending())
+      throw std::runtime_error(factory->sender->last_error());
     if (!factory->last_error().empty())
       throw std::runtime_error(factory->last_error());
     if (factory->sender && !factory->sender->last_error().empty())
@@ -320,7 +422,7 @@ __declspec(dllexport) int qarvtk_qt_controls_tick(void *handle, uint32_t active,
   }
 }
 __declspec(dllexport) int qarvtk_qt_controls_changed(void *handle, uint32_t index, double *value) {
-  if (!handle || index >= 3 || !value)
+  if (!handle || index >= static_cast<Controls *>(handle)->rows.size() || !value)
     return 0;
   auto &row = static_cast<Controls *>(handle)->rows[index];
   if (!row.changed)
@@ -328,6 +430,40 @@ __declspec(dllexport) int qarvtk_qt_controls_changed(void *handle, uint32_t inde
   *value = row.value;
   row.changed = false;
   return 1;
+}
+__declspec(dllexport) int qarvtk_qt_controls_add_slice(void *handle, const char *name,
+                                                       const char *color, char *error,
+                                                       uint32_t size) {
+  try {
+    return int(static_cast<Controls *>(handle)->add_row(name, color));
+  } catch (const std::exception &e) {
+    message(error, size, e.what());
+    return -1;
+  }
+}
+__declspec(dllexport) int qarvtk_qt_controls_attach_playback(void *handle, const char *object_name,
+                                                             char *error, uint32_t size) {
+  try {
+    QWidget *found{};
+    for (auto *widget : QApplication::allWidgets()) {
+      if (widget->objectName() == QString::fromUtf8(object_name)) {
+        if (found)
+          throw std::invalid_argument("Sequence widget name is not unique");
+        found = widget;
+      }
+    }
+    static_cast<Controls *>(handle)->attach_playback(found);
+    return 0;
+  } catch (const std::exception &e) {
+    message(error, size, e.what());
+    return -1;
+  }
+}
+__declspec(dllexport) void qarvtk_qt_controls_playback_visible(void *handle, uint32_t visible) {
+  static_cast<Controls *>(handle)->show_playback(visible != 0);
+}
+__declspec(dllexport) void qarvtk_qt_controls_status(void *handle, char *text, uint32_t size) {
+  message(text, size, static_cast<Controls *>(handle)->status().c_str());
 }
 __declspec(dllexport) void qarvtk_qt_controls_destroy(void *handle) {
   delete static_cast<Controls *>(handle);

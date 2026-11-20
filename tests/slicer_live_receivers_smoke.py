@@ -27,7 +27,7 @@ from QarosVTKLib.qarvtk_host_panels import SlicePanels
 
 def run():
     assert slicer.app.layoutManager(), 'This GPU test requires the main Slicer window'
-    assert QarosLive.LIVE_VERSION == 'r8.10', 'Install r8.10 before this test'
+    assert QarosLive.LIVE_VERSION == 'r8.11', 'Install r8.11 before this test'
     client = VisualizerMcp()
     pause_policy = client.call('viz_state', {})['structuredContent']['stream_pause_policy']
     hub = transport = None
@@ -49,13 +49,21 @@ def run():
         while time.perf_counter() < end:
             pump()
             if predicate(): return
-        raise RuntimeError(label + ': ' + (transport.status() if transport else str(hub.snapshot)))
+        detail = transport.status() if transport else str(hub.snapshot)
+        if transport and transport.panels:
+            detail += ' panels=' + str({name: transport.panel_status(source.handle)
+                                       for name, source in transport.panels.sources.items()})
+        raise RuntimeError(label + ': ' + detail)
     def frames(name):
         match = re.search(re.escape(name) + r'.*?; (\d+) frames', transport.status())
         return int(match.group(1)) if match else 0
     def record(label):
         item = dict(step=label, status=transport.status(), source_peer=hub.snapshot['source_peer'],
                     native_handle=transport.handle.value, serial=transport.diagnostics.last_serial)
+        if transport.panels:
+            item['panels'] = {name: dict(visible=source.visible, status=transport.panel_status(source.handle))
+                              for name, source in transport.panels.sources.items()}
+            item['panel_errors'] = dict(transport.panels.errors)
         records.append(item)
         print(json.dumps(item), flush=True)
     name = 'Slicer Hot Test ' + uuid.uuid4().hex[:8]
@@ -136,6 +144,62 @@ def run():
         assert not transport.panels.errors, transport.panels.errors
         panel.grab().save(str(log_folder / 'qt-slice-controls.png'))
         record('Qt slice controls synchronized in both directions')
+        # Native sequence widgets control the same proxy volume already being streamed.
+        sequence = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLSequenceNode', 'Playback test')
+        for index in range(4):
+            slicer.util.updateVolumeFromArray(volume, np.roll(data, index, axis=0))
+            sequence.SetDataNodeAtValue(volume, str(index))
+        browser = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLSequenceBrowserNode', 'Playback test')
+        browser.SetAndObserveMasterSequenceNodeID(sequence.GetID())
+        browser.AddProxyNode(volume, sequence, False)
+        controls.playback.selector.setCurrentNode(browser)
+        wait(lambda: controls.playback.available and panel.height > 252, 'Native sequence controls appear')
+        controls.playback.seek.setSelectedItemNumber(2)
+        assert browser.GetSelectedItemNumber() == 2
+        browser.SetSelectedItemNumber(1)
+        pump()
+        seek_slider = controls.playback.seek.findChild(qt.QSlider, 'slider_IndexValue')
+        assert seek_slider.value == 1, seek_slider.value
+        controls.playback.play.onVcrLast()
+        assert browser.GetSelectedItemNumber() == 3
+        controls.playback.play.onVcrFirst()
+        assert browser.GetSelectedItemNumber() == 0
+        browser.SetPlaybackRateFps(5.)
+        play_button = controls.playback.play.findChild(qt.QPushButton, 'pushButton_VcrPlayPause')
+        play_button.click()
+        wait(lambda: browser.GetPlaybackActive() and browser.GetSelectedItemNumber() > 0, 'Native sequence playback')
+        play_button.click()
+        assert not browser.GetPlaybackActive()
+        controls.playback.stop.click()
+        assert browser.GetSelectedItemNumber() == 0 and not browser.GetPlaybackActive()
+        panel.grab().save(str(log_folder / 'qt-sequence-controls.png'))
+        record('Native sequence play, pause, first, last, seek and Stop passed')
+        layout = slicer.app.layoutManager()
+        extra_layout = '''<layout type="horizontal"><item>
+          <view class="vtkMRMLViewNode" singletontag="1"><property name="viewlabel" action="default">1</property></view>
+          </item><item><layout type="vertical">'''
+        for view_name, color in (('Red', '#F34A33'), ('Yellow', '#EDD54C'), ('Green', '#6EB04B'), ('Red2', '#F34A33')):
+            extra_layout += '<item><view class="vtkMRMLSliceNode" singletontag="' + view_name + '">' + \
+                '<property name="orientation" action="default">Axial</property>' + \
+                '<property name="viewlabel" action="default">' + view_name + '</property>' + \
+                '<property name="viewcolor" action="default">' + color + '</property></view></item>'
+        extra_layout += '</layout></item></layout>'
+        layout.layoutLogic().GetLayoutNode().AddLayoutDescription(501, extra_layout)
+        layout.setLayout(501)
+        assert layout.threeDWidget(0).threeDView() == view, 'Layout replaced the active 3D source'
+        layout.sliceWidget('Red2').sliceLogic().GetSliceCompositeNode().SetBackgroundVolumeID(volume.GetID())
+        slicer.util.resetSliceViews()
+        wait(lambda: 'Red2' in controls.names and 'Red2' in transport.panels.sources, 'Additional slice view controls')
+        index = controls.names.index('Red2')
+        extra_slider = panel.findChild(qt.QSlider, 'sliceSlider' + str(index))
+        extra_slider.value = 7000
+        pump()
+        original = controls.slider(index)
+        expected = original.minimum + (original.maximum-original.minimum)*.7
+        assert abs(original.value-expected) < .02
+        wait(lambda: all(transport.panel_status(s.handle).startswith('Live ')
+                        for s in transport.panels.sources.values()), 'Four slice video panels')
+        record('Additional Red2 slice view synchronized')
         transport.set_receivers([])
         wait(lambda: 'Streaming is idle' in transport.status(), 'Qt controls pause with empty selection')
         transport.set_receivers([first])

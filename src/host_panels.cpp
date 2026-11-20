@@ -67,6 +67,8 @@ struct HostPanel {
   std::deque<QarvtkPanelGesture> input;
   std::vector<QarPeerId> input_peers;
   uint64_t input_epoch=1;
+  uint64_t input_received{},input_accepted{},input_filtered{},input_invalid{};
+  QarvtkPanelGesture last_input{};
   void input_audience(const std::vector<QarPeerId>& peers){
     std::lock_guard<std::mutex> lock(input_mutex);
     input_peers=peers;input.clear();++input_epoch;
@@ -121,22 +123,26 @@ struct PanelStream {
   static void on_gesture(QarGuiPanelGesture* handle,void* context)noexcept{
     auto& panel=*static_cast<HostPanel*>(context);
     try{
+      {std::lock_guard<std::mutex> lock(panel.input_mutex);++panel.input_received;}
       QarvtkPanelGesture event{};QarPeerId peer{};
       QarGuiPanelGestureKind kind{};QarGesturePhase phase{};
       QarGuiPanelPoint point{},start{};QarHandedness hand{};uint8_t taps{};
       if(!qar_result_is_success(qar_gui_panel_gesture_get_lifecycle(handle,&peer,&event.gesture_id))||
          !qar_result_is_success(qar_gui_panel_gesture_get_classification(handle,&kind,&phase))||
-         !qar_result_is_success(qar_gui_panel_gesture_get_positions(handle,&point,&start)))return;
+         !qar_result_is_success(qar_gui_panel_gesture_get_positions(handle,&point,&start))){
+        std::lock_guard<std::mutex> lock(panel.input_mutex);++panel.input_invalid;return;
+      }
       qar_gui_panel_gesture_get_handedness(handle,&hand);
       qar_gui_panel_gesture_get_tap_count(handle,&taps);
       std::memcpy(event.peer,peer.data,sizeof(event.peer));
       event.kind=uint32_t(kind);event.phase=uint32_t(phase);event.hand=uint32_t(hand);
       event.tap_count=taps;event.x=point.x_pixels;event.y=point.y_pixels;
       std::lock_guard<std::mutex> lock(panel.input_mutex);
+      panel.last_input=event;
       if(panel.closed||!panel.visible||std::none_of(panel.input_peers.begin(),panel.input_peers.end(),
-         [&](const auto& p){return qar_peer_id_equals(&p,&peer);}))return;
+         [&](const auto& p){return qar_peer_id_equals(&p,&peer);})){++panel.input_filtered;return;}
       if(panel.input.size()>=128){panel.input.clear();++panel.input_epoch;}
-      panel.input.push_back(event);
+      panel.input.push_back(event);++panel.input_accepted;
     }catch(...){} // A background SDK callback never propagates into the runtime.
   }
 #endif
@@ -360,7 +366,18 @@ void HostPanels::visible(HostPanel* handle,bool visible){
   if(!visible){std::lock_guard<std::mutex> lock(p.input_mutex);p.input.clear();++p.input_epoch;}
 }
 void HostPanels::close(HostPanel* p){impl_->get(p).closed=true;}
-std::string HostPanels::status(HostPanel* handle){auto& p=impl_->get(handle);std::lock_guard<std::mutex> lock(p.status_mutex);return p.state;}
+std::string HostPanels::status(HostPanel* handle){
+  auto& p=impl_->get(handle);std::string state;
+  {std::lock_guard<std::mutex> lock(p.status_mutex);state=p.state;}
+  if(p.interactive){
+    std::lock_guard<std::mutex> lock(p.input_mutex);
+    state+="; input received="+std::to_string(p.input_received)+" accepted="+std::to_string(p.input_accepted)+
+      " filtered="+std::to_string(p.input_filtered)+" invalid="+std::to_string(p.input_invalid);
+    if(p.input_received)state+=" last="+std::to_string(p.last_input.kind)+"/"+std::to_string(p.last_input.phase)+
+      " pixel="+std::to_string(p.last_input.x)+","+std::to_string(p.last_input.y);
+  }
+  return state;
+}
 void HostPanels::start(QarSession* session,const std::vector<QarPeerId>& peers){
   if(impl_->worker.joinable())throw std::runtime_error("Panel worker already started");
   add_peers(peers);
