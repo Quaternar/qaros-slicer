@@ -2,3 +2,6 @@
 	path = external/qaros
 	url = https://github.com/Quaternar/qaros.git
 	branch = staging/main-with-headset
+[submodule "external/qaros-qt"]
+	path = external/qaros-qt
+	url = https://github.com/Quaternar/qaros-qt.git

@@ -8,8 +8,9 @@ future V0 headers.
 
 | API generation | Source inspected | Connection path |
 | --- | --- | --- |
-| Hub, presence (default) | Submodule `external/qaros` at `3a5b301c` (`staging/main-with-headset`, QAROS 0.10.0), header `b5528bc4` | Same as dev.3184; the bridge code is unchanged. A checkout that converted the header to CRLF is hashed as LF |
-| Installed Hub, presence | Installed QAROS `0.9.0-dev.3184+2ccfb349`, header `f3bbddfd` | Stable local app tag, peer presence, live receiver selection, get-or-create volumes/panels; split WGL callbacks; current Live r8.8 |
+| Hub, presence (default) | Submodule `external/qaros` at `d90dd6a3`, matching installed QAROS `0.10.0-rc.4.16+793871a8`, header `231b63f8` | Live r8.10 package and updater, stable local app tag, receiver selection, slice video and Qt controls. CRLF checkouts are hashed as LF during compilation |
+| Earlier 0.10 header | Public header `b5528bc4` | Retained compile support |
+| Installed Hub, presence | QAROS `0.9.0-dev.3184+2ccfb349`, header `f3bbddfd` | Stable local app tag, peer presence, live receiver selection, get-or-create volumes/panels; archived Live r8.8 package |
 | Installed Hub, presence | Supplied QAROS `0.9.0-dev.3008+65dc9aeb`, header `55e6e3f4` | Same transport; archived Live r8.4 |
 | Installed Hub | Supplied QAROS `0.9.0-dev.2927+f291e404`, header `a32cecd4` | Local app enrollment, discover a running target, get-or-create volumes and panels; split WGL callbacks |
 | Session, split OpenGL | Supplied QAROS `0.9.0-dev.2540+1ed038e4`, header `c709c479` | Create/serialize/join session, invite target, add volume; new WGL callback layout |

@@ -20,6 +20,7 @@
 #if QARVTK_HOST_ONBOARDING_API
 #include "../apps/host_hub.hpp"
 #include "../apps/host_device_selection.hpp"
+#include "../apps/host_panel_scope.hpp"
 #endif
 #include <array>
 #include <algorithm>
@@ -392,7 +393,7 @@ struct QarvtkHost {
     std::filesystem::create_directories(std::filesystem::u8path(log_folder));
     log.open(std::filesystem::u8path(log_folder)/"host-bridge.log",std::ios::app);
     if(!log)throw std::runtime_error("Cannot open host bridge log");
-    log<<"Host build: installed-hub-update-r8.8 (ABI 5); SDK header " QARVTK_HOST_SDK_HASH<<std::endl;
+    log<<"Host build: installed-hub-update-r8.15 (ABI 5); SDK header " QARVTK_HOST_SDK_HASH<<std::endl;
     log<<"SDK root: "<<sdk_root<<std::endl;
     log<<"Target mode: "<<target<<"; workspaces="<<volumes.size()<<std::endl;
     if(!asynchronous_copies)copying=std::make_unique<qarvtk::HostSharedWgl>(dc,host_context);
@@ -522,6 +523,7 @@ struct Session {
   std::vector<QarPeerId> panel_peers;
   qarvtk::HostLiveSelection::Snapshot desired{};
   std::uint64_t selection_generation=0;
+  std::uint64_t panel_registry_revision=~uint64_t(0);
   Clock::time_point waiting_since=Clock::now();
 #if QARVTK_HOST_ONBOARDING_API
   QarPeerId source_peer=qar_peer_id_default();
@@ -565,7 +567,7 @@ struct Session {
 #endif
     // Detach while the old producer still exists. Otherwise a mixer can start
     // reconnecting to a sender we have just destroyed before seeing Stop.
-    for(auto& stream:streams)if(stream.sender)qar_render_stream_handle_destroy(stream.sender);
+    for(auto& stream:streams)if(stream.sender){host.panels->remove_hand_source(stream.sender);qar_render_stream_handle_destroy(stream.sender);}
     // The connected Hub keeps its stable workspaces with no audience until
     // Disconnect. Legacy standalone sessions still close their own volumes.
     for(auto& volume:volumes)if(volume.created&&!host.hub)qar_app_volumes_close_volume(session,&volume.id);
@@ -787,7 +789,7 @@ struct Session {
         const auto result=qar_app_volumes_update_used_by_peers(session,&volumes[v].id,nullptr,0,&peer,1);
         if(!qar_result_is_success(result))error="Unable to remove receiver from workspace audience";
 #endif
-        if(stream.sender){qar_render_stream_handle_destroy(stream.sender);stream.sender=nullptr;}
+        if(stream.sender){host.panels->remove_hand_source(stream.sender);qar_render_stream_handle_destroy(stream.sender);stream.sender=nullptr;}
       }
       if(!error.empty())throw std::runtime_error(error);
     });
@@ -935,6 +937,7 @@ struct Session {
       const auto route=routes.address(i);
       const auto label=target_label(route.target);
       auto* sender=stream.sender;
+      host.panels->add_hand_source(session,sender,volumes[route.volume].id,targets[route.target].peer);
       host.render_queue->enable(i);
       stream.pump=std::make_unique<ReceiverPump>();
       stream.pump->start([this,i,sender,label](ReceiverPump& pump){pump_stream(i,sender,label,pump);});
@@ -1112,6 +1115,7 @@ struct Session {
       changed=previous!=selection_generation;
     }
 #if QARVTK_HOST_ONBOARDING_API
+    const auto current_registry_revision=target_registry->revision();
     const auto available=target_registry->snapshot();
     // Record discovery changes once, including why a headset is filtered out.
     // Callbacks still only copy metadata; no logging or SDK work on that thread.
@@ -1180,11 +1184,22 @@ struct Session {
       for(std::size_t t=0;t<targets.size();++t)if(desired[t].wanted&&!targets[t].retirement&&target_ready_count(t))next.push_back(targets[t].peer);
       const bool audience_changed=next.size()!=panel_peers.size()||!std::equal(next.begin(),next.end(),panel_peers.begin(),
         [](const auto& a,const auto& b){return qar_peer_id_equals(&a,&b);});
+#if QARVTK_HOST_ONBOARDING_API
+      const auto registry_revision=current_registry_revision;
+      if(audience_changed||registry_revision!=panel_registry_revision){
+        const auto scope=qarvtk::host_panel_scope(available,next,source_peer);
+        if(!panels_started&&!next.empty()){host.panels->start(session,next,scope.peers,scope.note);panels_started=true;}
+        else if(panels_started)host.panels->set_peers(next,scope.peers,scope.note);
+        panel_peers=std::move(next);
+        panel_registry_revision=registry_revision;
+      }
+#else
       if(audience_changed){
         if(!panels_started&&!next.empty()){host.panels->start(session,next);panels_started=true;}
         else if(panels_started)host.panels->set_peers(next);
         panel_peers=std::move(next);
       }
+#endif
       return;
     }
     bool all_done=true;
@@ -1197,6 +1212,13 @@ struct Session {
         else host.panels->add_peers(panel_peers);
       }
     }
+#if QARVTK_HOST_ONBOARDING_API
+    if(panels_started&&(changed||current_registry_revision!=panel_registry_revision)){
+      const auto scope=qarvtk::host_panel_scope(available,panel_peers,source_peer);
+      host.panels->set_peers(panel_peers,scope.peers,scope.note);
+      panel_registry_revision=current_registry_revision;
+    }
+#endif
     if(!host.stopping&&!ready_count()&&(all_done||Clock::now()-waiting_since>std::chrono::seconds(120)))
       throw std::runtime_error("No usable rendering sender. "+progress());
   }
@@ -1247,7 +1269,13 @@ const char* qarvtk_host_info(){
 #else
     "0,\"persistent_connection\":0,\"live_selection\":0,\"stable_app_tag\":\"\",\"max_selected_targets\":2"
 #endif
-    ",\"header_sha256\":\"" QARVTK_HOST_SDK_HASH "\",\"eye_size\":104,\"frame_size\":240,\"placement_size\":112,\"volume_size\":120}";
+    ",\"panel_input\":"
+#if QARVTK_HOST_PANEL_INPUT
+    "1"
+#else
+    "0"
+#endif
+    ",\"panel_stream_rebind\":1,\"panel_pipeline_audience\":1,\"panel_drag_origin\":1,\"panel_motion_coalescing\":1,\"panel_contact_release\":1,\"header_sha256\":\"" QARVTK_HOST_SDK_HASH "\",\"eye_size\":104,\"frame_size\":240,\"placement_size\":112,\"volume_size\":120}";
 }
 int qarvtk_hub_connect(const char* sdk,const char* folder,QarvtkHub** result,char* error,uint32_t size){
   if(result)*result=nullptr;
@@ -1465,6 +1493,28 @@ void qarvtk_host_panel_close(QarvtkHost* h,QarvtkHostPanel* p){
 void qarvtk_host_panel_status(QarvtkHost* h,QarvtkHostPanel* p,char* text,uint32_t size){
   try{message(text,size,h&&h->panels?h->panels->status(reinterpret_cast<qarvtk::HostPanel*>(p)):"Stopped");}
   catch(const std::exception& e){message(text,size,e.what());}
+}
+int qarvtk_host_control_panel_create(QarvtkHost* h,const char* name,uint32_t w,uint32_t height,
+    double x,double y,double z,double width_meters,double height_meters,QarvtkHostPanel** out,char* error,uint32_t size){
+  if(out)*out=nullptr;
+  try{
+    if(!h||!h->panels||!out||h->stopping)throw std::invalid_argument("No active Qt panel transport");
+    if(height_meters<=0)throw std::invalid_argument("Invalid control panel height");
+    *out=reinterpret_cast<QarvtkHostPanel*>(h->panels->create(name,w,height,x,y,z,width_meters,true,height_meters));return 0;
+  }catch(const std::exception& e){message(error,size,e.what());return -1;}
+}
+int qarvtk_host_panel_capture_rgba(QarvtkHost* h,QarvtkHostPanel* p,const uint8_t* pixels,
+    uint32_t w,uint32_t height,uint32_t stride,char* error,uint32_t size){
+  try{
+    if(!h||!h->panels||h->stopping)return 0;
+    return h->panels->capture_rgba(reinterpret_cast<qarvtk::HostPanel*>(p),pixels,w,height,stride);
+  }catch(const std::exception& e){message(error,size,e.what());return -1;}
+}
+int qarvtk_host_panel_gestures(QarvtkHost* h,QarvtkHostPanel* p,QarvtkPanelGesture* out,uint32_t capacity,uint64_t* epoch){
+  try{
+    if(!h||!h->panels||!epoch||h->stopping)return -1;
+    return h->panels->gestures(reinterpret_cast<qarvtk::HostPanel*>(p),out,capacity,*epoch);
+  }catch(...){return -1;}
 }
 
 }

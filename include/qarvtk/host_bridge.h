@@ -89,6 +89,19 @@ QARVTK_HOST_API int qarvtk_host_panel_visible(QarvtkHost*,QarvtkHostPanel*,uint3
 QARVTK_HOST_API void qarvtk_host_panel_close(QarvtkHost*,QarvtkHostPanel*);
 QARVTK_HOST_API void qarvtk_host_panel_status(QarvtkHost*,QarvtkHostPanel*,char* text,uint32_t size);
 
+/* Copied panel input. No SDK handle or callback crosses into Qt/Python. */
+typedef struct QarvtkPanelGesture {
+  uint8_t peer[16];
+  uint64_t gesture_id;
+  uint32_t kind,phase,hand,tap_count;
+  int32_t x,y;
+} QarvtkPanelGesture;
+QARVTK_HOST_API int qarvtk_host_control_panel_create(QarvtkHost*,const char* name,uint32_t width,uint32_t height,
+    double x,double y,double z,double width_meters,double height_meters,QarvtkHostPanel**,char* error,uint32_t error_size);
+QARVTK_HOST_API int qarvtk_host_panel_capture_rgba(QarvtkHost*,QarvtkHostPanel*,const uint8_t* pixels,
+    uint32_t width,uint32_t height,uint32_t stride,char* error,uint32_t error_size);
+QARVTK_HOST_API int qarvtk_host_panel_gestures(QarvtkHost*,QarvtkHostPanel*,QarvtkPanelGesture*,uint32_t capacity,uint64_t* epoch);
+
 #ifdef __cplusplus
 }
 #endif

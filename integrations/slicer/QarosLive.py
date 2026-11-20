@@ -9,7 +9,7 @@ import ctk
 import slicer
 from slicer.ScriptedLoadableModule import ScriptedLoadableModule, ScriptedLoadableModuleWidget
 
-LIVE_VERSION = "r8.8"
+LIVE_VERSION = "r8.15"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 if (Path(__file__).resolve().parent / "QarosVTKLib").is_dir():
@@ -96,14 +96,19 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
                                "Rotate the workspace in QAROS to turn the streamed model.")
         orientation.wordWrap = True
         form.addRow(orientation)
-        self.slicePreviews = qt.QCheckBox("Show image-only slice panels (preview only)")
+        self.slicePreviews = qt.QCheckBox("Show slice image panels")
         self.slicePreviews.checked = True
         self.slicePreviews.toolTip = "Live images of visible slice views, including video/sequences. " \
             "Each panel starts with a 14-inch diagonal, independent of model size; resize it in QAROS. " \
             "Image bounds remove empty margins; data names appear in the window title. " \
             "Slice corner annotations are hidden in Slicer while streaming and restored on Stop. " \
-            "No remote slice interaction. Applied at Start."
+            "Applied at Start."
         form.addRow(self.slicePreviews)
+        self.sliceControls = qt.QCheckBox("Show Qt slice controls in glasses")
+        self.sliceControls.checked = True
+        self.sliceControls.toolTip = "Requires slice image panels. Touch and drag the sliders for the open slice views. Native Slicer sequence playback controls appear for animated data. Values stay synchronized with Slicer. Applied at Start."
+        form.addRow(self.sliceControls)
+        self.slicePreviews.connect("toggled(bool)", lambda checked: self.update_controls())
         self.sliceFps = qt.QComboBox()
         self.sliceFps.addItems(["5", "10", "15", "30"])
         self.sliceFps.currentIndex = 2
@@ -289,8 +294,9 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
         self.disconnectButton.enabled = connecting and not self.connection.stopping and not running
         self.sdk.enabled = self.dll.enabled = not connecting and not running
         for control in (self.separateVolumes, self.fit, self.modelScale, self.resetScale,
-                        self.renderScale, self.slicePreviews, self.sliceFps):
+                        self.renderScale, self.slicePreviews, self.sliceControls, self.sliceFps):
             control.enabled = not running
+        self.sliceControls.enabled = not running and self.slicePreviews.checked
         if connected and not running and not self.lastStartError:
             self.status.text = ("Select at most eight receivers." if count > MAX_SELECTED_TARGETS else
                                str(count) + " receiver(s) selected. Ready to stream." if count else
@@ -331,7 +337,7 @@ class QarosLiveWidget(ScriptedLoadableModuleWidget):
                 version=LIVE_VERSION, path=str(Path(__file__).resolve()), orientation_mode="fixed_ras")))
             if self.slicePreviews.checked:
                 position, size = workspace_envelope(hosts)
-                self.transport.panels = SlicePanels(lm, self.transport, position, size, fps=int(self.sliceFps.currentText))
+                self.transport.panels = SlicePanels(lm, self.transport, position, size, fps=int(self.sliceFps.currentText), controls=self.sliceControls.checked)
             self.workspaceStatus.text = "\n".join(host.name + ": " + " × ".join(f"{x * 100:.1f}" for x in host.workspace_size)
                                                  + " cm" for host in hosts)
             self.settings.setValue("QAROS_LIVE/Dll", self.dll.currentPath)

@@ -6,7 +6,7 @@ Your [3D Slicer](https://www.slicer.org) scene in the room, in AR glasses, strea
 
 - **Live stereo 3D.** Each receiver gets its own stereo stream of the first 3D view, as color plus depth. Transfer functions, ROI cropping and real data transforms stay live.
 - **One workspace per volume.** Each visible volume can have its own movable QAROS workspace. Turn off **Separate QAROS workspace for each volume** to stream the whole scene as one.
-- **Slice views as panels.** Visible slice views open as image-only GUI panels next to the model.
+- **Slice views as panels.** Visible slice views open as GUI video panels next to the model. A separate **Slice controls** Qt panel has Red, Yellow and Green offset sliders and millimetre values, synchronized with Slicer in both directions.
 - **Several receivers.** Stream to several headsets and Visualizers at once, up to eight, and add or remove them while streaming.
 
 The old QAROS Streaming module (`QarosVTK.py`) was removed on 2026-10-22. ANARI remains a separate alternative: this package does not install it, and Live capture does not support it.
@@ -19,8 +19,8 @@ The old QAROS Streaming module (`QarosVTK.py`) was removed on 2026-10-22. ANARI 
 
 | Bridge built from | QAROS it runs with |
 | --- | --- |
-| `main` with the `external/qaros` submodule | QAROS 0.10.0 (`staging/main-with-headset`), header `b5528bc4` |
-| `downloads/qarvtk-live-dev3184.zip`, installed by `UPDATE-LIVE-PLUGIN.cmd` | QAROS 0.9.0-dev.3184+2ccfb349, header `f3bbddfd` |
+| `main` with the `external/qaros` submodule, or `downloads/qarvtk-live-0.10.0-rc.4.16.zip` | QAROS 0.10.0-rc.4.16+793871a8, header `231b63f8` |
+| Archived `downloads/qarvtk-live-dev3184.zip` | QAROS 0.9.0-dev.3184+2ccfb349, header `f3bbddfd` |
 
 - QAROS and the headset player apps must run the same version. After an update, the Hub may ask you to approve the app or pair the device again.
 - To build: Visual Studio 2022 or later with the C++ workload, CMake 3.20 or later, Python 3 for the tests. You do not need to build Slicer, VTK, Qt or vcpkg.
@@ -29,17 +29,18 @@ Detailed steps (Czech): [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
 ## Install
 
-### Prebuilt package (QAROS 0.9.0-dev.3184)
+### Prebuilt package (QAROS 0.10.0-rc.4.16)
 
 1. Stop streaming and close Slicer.
 2. Update this checkout (`git pull`, or **Fetch origin → Pull origin** in GitHub Desktop).
 3. Run **`UPDATE-LIVE-PLUGIN.cmd`**. It also works for the first install.
 4. On the first install, add the folder `package/windows-start/plugins/slicer` from this checkout to **Edit → Application Settings → Modules → Additional module paths**, then restart Slicer.
-5. Open **QAROS → QAROS Live Renderer**. The module must show **Live plugin r8.8**.
+5. Open **QAROS → QAROS Live Renderer**. The module must show **Live plugin r8.15**.
 
 What the updater does:
 
-- It installs package **r8.8** for the complete QAROS **0.9.0-dev.3184+2ccfb349**. It finds QAROS through the Windows registry, usually `C:\Program Files\Quaternar\QAROS`.
+- It installs package **r8.15** for the complete QAROS **0.10.0-rc.4.16+793871a8**. It finds QAROS through the Windows registry, usually `C:\Program Files\Quaternar\QAROS`.
+- Qt slice controls use Slicer's Qt **5.15.2** through `qarvtk-qt-controls.dll`. The package contains the Qt integration library and its licence. The Qt runtime is supplied by Slicer.
 - It checks the SDK and the ZIP contents and backs up the original files.
 - It removes the old module, its export helpers and the Python caches from the folders it manages. It does not search other folders: if you copied a plugin by hand somewhere else, remove that path from Additional module paths.
 - The path `package/windows-start` stays, so existing Slicer settings keep working. The old `START-PREVIEW.cmd` only forwards to this installer. The cube preview and the standalone sender are not needed for Slicer.
@@ -81,7 +82,7 @@ More: [headsets](docs/HEADSET_STREAMING.md) · [multiple volumes](docs/MULTIPLE_
 
 ```powershell
 git clone --recurse-submodules https://github.com/Quaternar/qaros-slicer; cd qaros-slicer
-cmake -S . -B build-host -A x64 -DQARVTK_BUILD_RENDERER=OFF -DQARVTK_BUILD_HOST_BRIDGE=ON
+cmake -S . -B build-host -A x64 -DQARVTK_BUILD_RENDERER=OFF -DQARVTK_BUILD_HOST_BRIDGE=ON -DQARVTK_BUILD_QT_CONTROLS=ON "-DCMAKE_PREFIX_PATH=C:/Qt/5.15.2/msvc2019_64"
 cmake --build build-host --config Release --parallel 4
 ctest --test-dir build-host -C Release --output-on-failure
 ```
@@ -146,7 +147,7 @@ This repository follows the shared QAROS versioning scheme: [ADR-0001: One versi
 - The **Release bump** check on each pull request fails when neither defines a bump, and shows the version merging releases.
 - Add the changelog entry under `Unreleased` in the pull request. The release is at least what its entries need: `Breaking` or `Removed` a breaking bump, `Features` or `Enhancements` a minor, `Bug fixes` a patch.
 - To merge without releasing, label the pull request `release:none`; the next releasing merge ships it.
-- The Slicer module keeps its own build label (`LIVE_VERSION`, `r8.8` in `integrations/slicer/QarosLive.py`) for now.
+- The Slicer module keeps its own build label (`LIVE_VERSION`, `r8.15` in `integrations/slicer/QarosLive.py`) for now.
 
 ## License
 

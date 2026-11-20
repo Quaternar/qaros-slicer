@@ -1,5 +1,231 @@
 # Validation and next work
 
+## Fresh fingertip release guard r8.15 (2026-11-21)
+
+The r8.14 follow-up still failed the user's live release check. The host now
+uses `qar_render_sender_last_hands` while a panel has an outstanding drag,
+independently of 3D frame arrival. The existing panel worker samples at most
+about 30 times per second; no new thread or runtime MCP polling is added.
+Sender registrations are removed under the sampling lock before their SDK
+handles are destroyed, including live receiver retirement.
+
+Tracked index tips with valid positions are converted from each volume's app
+space through its current SDK pose and scale into room space. The panel's actual
+pose is read at startup and followed through its metadata subscription.
+The first hand timestamp primes the guard; cached or non-advancing samples do
+not release anything. Withdrawal past 3 cm plus fingertip radius cancels that
+pointer. An old drag remains suppressed until a fresh contact returns within
+2 cm plus radius; it then starts at the current contact instead of its old origin.
+
+The new contact test covers cached data, hysteresis, stale re-entry, separate
+peers/hands, grazing contact and coordinate transforms. The real Slicer fixture
+passes withdrawal without SDK End, rejection of continued old drag updates,
+and re-grabbing the committed timeline thumb without leaving the panel. All
+24 CTest checks pass. Physical headset and live runtime confirmation are still
+required; unavailable or unfocused SDK hand tracking leaves the original gesture
+lifecycle in use. The automatic-pause issue remains open.
+
+Live r8.15 follow-up: the user again reported increasing latency and could not
+reliably distinguish it from a missed release. At the measured point the Slicer
+GUI report was 0.28 s old, while the QAROS receiver delivered about 2.3 FPS and
+its pipeline reported about 889 ms delay. The contact guard had recorded zero
+usable samples/releases, so it was not established as active in this test.
+The cause of unavailable samples and the broader runtime slowdown remain open;
+do not claim release or latency is fixed. The owned test was stopped for the night.
+The final completed-frame profile recorded about 370 ms in SDK frame waiting,
+18 ms in GUI work, 7 ms waiting for the GPU and 21 ms in SDK submission. The last
+GPU sample was 69 C, P8 / 300 MHz; thermal throttling is not established as the
+cause of this slowdown. No source-FPS limit was found in the launch environment.
+Next isolate a minimal 3D stream, then static Qt and slice panels, before drawing
+further conclusions about release events or adding another workaround.
+
+## Motion backlog and release-only seek r8.14 (2026-11-21)
+
+The user reported an increasingly delayed timeline and suspected the slice
+sliders were affected too. A real Slicer/MRML regression queued 60 alternating
+time-slider movements before a release. The old input path replayed all 60
+proxy-frame changes. Pending continuous hover/drag positions are now coalesced
+per peer, hand, kind and gesture, without crossing lifecycle boundaries.
+This shared SDK-to-GUI queue applies to every slider; slice previews remain live.
+
+The original MRML time widget is retained. Its Qt slider now has tracking
+disabled and a 48-pixel minimum height. Dragging changes the local handle;
+release commits the chosen frame through Slicer's existing MRML connection.
+The revised real-Slicer regression passes: no proxy-volume change during a
+drag, the chosen proxy data on release, no further seek from hover, cancellation
+after a lost end, ten native Stop callbacks, and at most one frame replacement
+for the queued burst. All 23 main CTest checks pass, including 1,000 interleaved
+motions from different peers/hands, preserved boundaries and all slice controls.
+The Windows updater fixture passed and the r8.14 package is installed locally.
+
+The live trace also recorded a QAROS drag remaining updated while the simulated
+fingertip had moved in front of the panel; cancellation arrived after leaving
+it. Host backlog cost is reproduced, but it is not established as the sole cause
+of live input latency. Further live validation is required after this change.
+Qt status now distinguishes the actual time-slider down state from the input
+pointer's pressed state. The automatic-pause recovery issue below remains open.
+
+## Pipeline audience and drag origin r8.13 (2026-11-20)
+
+The unmodified official Qt example was built and a live tap incremented its
+counter. Restricting the Slicer panel to target IDs suppressed live input;
+including each selected target's internal mixer restored it. The plugin now
+resolves that scope from its existing SDK peer inbox when metadata changes,
+with no MCP polling. Retained audiences are reconciled once at startup.
+
+SDK drag starts were recorded 23–25 pixels away from their original contact.
+The adapter now presses at that origin before moving. The Qt regression
+starts outside the thumb, recovers a missing started phase and checks all
+three sliders, tap ID 0, concurrent hover and release. Hover after release
+must not continue moving a slider. All 23 main CTest checks passed, as did
+the Windows updater fixture. r8.13 is installed locally.
+
+During the live follow-up a temporary video pause (SDK 602) was reproduced;
+the previous handler closed all panels as failed. The frame-wait classifier
+now retries pauses, no-transfer and reconnecting states while leaving closed
+streams and other errors fatal. Its regression passed with the full suite.
+
+The user subsequently confirmed that movement and release work, but Stop
+removed the controls panel with an access violation reading `0x60`. An isolated
+Slicer test reproduced that exact error by dispatching a native Qt mouse tap
+into the PythonQt Stop slot using the old CDLL loader. Retaining the GIL with
+PyDLL passed ten taps, including real MRML browser and proxy-data resets.
+The fixture is built with the Qt tests; run
+`tests/slicer_native_callback_smoke.py` with Slicer's `--python-script`, setting
+`QARVTK_QT_FIXTURE` to its DLL and `QARVTK_CALLBACK_RESULT` to a result file.
+The optional `QARVTK_TEST_UNSAFE_LOADER=1` reproduces the old failure in an
+isolated process without connecting to QAROS. All 23 CTest checks passed again.
+
+Follow-up: automatic `windowMinimized` pausing caused a black panel with all
+four panel streams reporting `No active transfers`. Returning to `never` did
+not recover them; restarting the owned sample Slicer with new senders did.
+Closing the auxiliary viewer or a hidden diagnostic website panel alone did
+not reproduce it. Re-enabling automatic pause did reproduce loss of the panel
+transfers. This recovery issue remains open, separate from the tested manual
+pause and SDK 602 handling. The current Visualizer test uses policy `never`.
+
+Yellow/green live operation and physical headset input remain to be verified.
+The status includes the last raw drag phase and pressed-slider count for that
+investigation. See [the input findings](QAROS_VIDEO_PANEL_INPUT.md).
+
+## Retained video panel repair r8.12 (2026-11-20)
+
+Reproduced the black-panel failure with the installed r8.11 package by
+interrupting an owned Slicer test process and reopening the same scene and
+panel identities. The 3D volume was decoded, but all four panels were black.
+Each retained panel still named the previous run's stream; the new senders
+waited for panel receivers.
+
+r8.12 explicitly calls `qar_gui_panels_set_stream` after registration and
+restores the panel's visible state. With the same retained panel identities,
+all four stream IDs matched their new senders and actual decoded slice and
+Qt pixels were visible in the Visualizer. No manual panel deletion was
+needed. The calls run at startup, outside the capture/render loop.
+
+- All 23 main CTest checks passed, including fresh/retained stream binding,
+  restoring hidden state and failure propagation for cleanup.
+- The Windows updater fixture passed; the r8.12 package is installed locally.
+- The existing Qt input test exercises the real native sliders with copied
+  gestures. It does not prove that QAROS publishes physical gestures.
+
+The input investigation remains open. During a separate 35-second
+Visualizer measurement, the index fingertip reached 15.1 mm behind the
+controls panel plane during a user-held press. The contact ring appeared,
+but the native subscription's `received` counter remained zero and
+`viz_hand_targets` contained no GUI-panel events for that video panel.
+A temporary website panel placed at the same pose did publish hover events;
+the streamed Qt panel did not. This localizes the observed failure before
+Qt injection, but does not establish the internal QAROS cause. Physical
+headset input still needs verification after the event-delivery problem is
+resolved. See [the reproduction report](QAROS_VIDEO_PANEL_INPUT.md).
+
+## Native playback and event-driven Qt controls r8.11 (2026-11-20)
+
+The existing Qt panel now adopts instances of Slicer's
+`qMRMLSequenceBrowserPlayWidget` and `qMRMLSequenceBrowserSeekWidget`, bound
+directly to the selected MRML Sequence Browser. Stop pauses and returns to
+the first frame. No second playback engine, data copy or controls stream is
+created. Recording controls are hidden.
+
+- All 23 main CTest checks passed. The new copied-gesture test drags the
+  actual Qt sliders, taps a native child button, adds a fourth slice row and
+  cancels a held pointer on pause. An unchanged panel neither repaints nor
+  uploads additional frames during the idle measurement.
+- The isolated Slicer test passed native Play/Pause, first/last, seek, Stop,
+  changing the selected browser, and the corresponding proxy-volume data.
+- The real Slicer/SDK test passed two receiver streams, live receiver
+  selection and pause/resume, three slice videos, bidirectional slice
+  controls and native sequence playback through the same active proxy.
+  A further independent Red2 view synchronized with its own control and
+  delivered a fourth video. All four videos resumed after empty selection.
+- The PowerShell 5.1 updater fixture passed fresh install, backup, rollback
+  and SDK mismatch rejection. r8.11 is installed locally.
+
+Capture is triggered by Qt update events and paced to at most 15 FPS. Input
+is drained independently on the host GUI timer. A retained latest image is
+retried if GPU upload was busy, without repainting the widget. Rows follow
+actual slice views, up to the same eight-view limit as the video previews;
+several volumes may share these views or use independent planes in another
+layout.
+
+The first physical headset test showed the panel but did not move sliders,
+including with direct touch. This remains under investigation. The Qt
+status now reports received, accepted, filtered and invalid SDK gestures,
+so recognition/subscription problems can be separated from Qt routing.
+Successful synthetic input is not evidence that physical input works.
+
+## Qt slice controls in Slicer Live r8.10 (2026-11-19)
+
+A separate Qt 5.15.2 bridge uses the official qaros-qt core at `14c18c00`.
+Its sender adapter reuses the existing host session and selected receiver
+list. Background SDK callbacks copy panel gestures into a bounded queue.
+The Qt thread maps these through qaros-qt into Qt events, and the Python
+integration applies values to Slicer's existing slice offset sliders.
+Changes made in Slicer update the AR controls on the next timer turn.
+
+- The real Slicer/SDK test passed stereo streaming, hot receiver selection,
+  empty selection and resume, three slice video panels, and bidirectional
+  synchronization of all three Qt sliders, including negative offsets.
+  Empty selection with the Qt panel active also resumed its slice videos.
+- A live follow-up recorded `PANEL_INPUT_SUBSCRIBED` and the first delivered
+  frame of the controls panel through the installed QAROS 0.10 runtime.
+- The main bridge's 22 CTest checks and the PowerShell 5.1 updater fixture
+  passed. The pinned Qt library passed 790 tests, with two Qt 6 Windows 11
+  style tests skipped on Qt 5.15.2.
+- An initial live attempt received no render requests because the minimized
+  Hub had paused its receiver. The final live test temporarily disabled that
+  pause policy and restored its original value during cleanup.
+
+Physical headset gestures remain to be verified. The automated Slicer check
+changes actual Qt slider values and verifies MRML synchronization. It does
+not substitute for a hand-tracking test in the glasses.
+
+## Slicer Live r8.9 with QAROS 0.10.0 (2026-11-19)
+
+Built with MSVC 19.39 for the installed QAROS
+`0.10.0-rc.4.16+793871a8`. The public SDK submodule at `d90dd6a3` supplies
+the same header as the installation, SHA-256 `231b63f8bd59e126ae199223e31c5efabf36eefbca36cd4ab5fb375991837a77`.
+
+- All 22 CTest checks passed, including installed SDK loading, native GPU copy,
+  Python runtime and device selection, and the bridge ABI.
+- The Windows PowerShell 5.1 updater fixture passed fresh installation, backup,
+  rollback after an injected failure, and rejection of a mismatched SDK.
+- In Slicer 5.12.4 with VTK 9.6.2, a synthetic CT streamed to one Visualizer,
+  then to two after the second was created during streaming. Removing a
+  receiver, clearing the selection and resuming kept the source peer and host
+  handle. More than 700 stereo frames were submitted across these stages.
+- A separate Four-up run sent stereo frames and video for the Red, Yellow and
+  Green slice panels. The native log recorded the first delivered frame for
+  each panel. Moving the Red slice caused a new capture. Both live tests
+  destroyed their transports and removed their temporary receiver slots.
+- The first live attempt waited for QAROS approval after the runtime upgrade
+  and timed out. The user approved Slicer and the next attempt passed.
+
+Installed r8.9 into the managed local plugin folder with a backup of the
+previous files. Physical headsets and Qt input injection were not tested in
+this adaptation. Slicer reports Qt 5.15.2. Interactive slice controls are a
+separate follow-up to the existing video previews.
+
 ## Slicer Live r8.8 candidate: ParaView transport port, 2026-11-03
 
 Ported ParaView r6c's independent cancellable receiver cycles, bounded GUI
@@ -1066,5 +1292,3 @@ prototype validated.
 The file/CPU scene exchange is intentional for this first stage; the per-frame
 pixel path stays on the GPU. A future in-process adapter must match its host's
 exact VTK/Qt ABI and adopt the host's render-thread lifecycle.
-
-

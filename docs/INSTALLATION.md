@@ -7,13 +7,58 @@ odstraněn. ANARI je samostatná alternativa, kterou tento instalátor nemění.
 ## Co potřebuješ
 
 - Windows x64 se Slicerem; referenční hostitelské testy používají Slicer 5.12.4.
-- Kompletní QAROS **0.9.0-dev.3184+2ccfb349**, včetně `include/qar_streaming.h`
+- Kompletní QAROS **0.10.0-rc.4.16+793871a8**, včetně `include/qar_streaming.h`
   a původní složky `bin`, s podporovanou GPU. Přehrávač v brýlích musí mít
   stejnou verzi; pokud Hub požádá o nové spárování/schválení, dokonči ho.
 - Checkout `Quaternar/qaros-slicer`, větev `main`, například `D:\QAROS_VTK`.
 
 Pro instalaci hotového balíčku nepotřebuješ Python, VTK, vcpkg ani kompilátor.
 Použije se Python a renderer dodaný se Slicerem. Nepřepisuj jednotlivé soubory SDK.
+
+## Posouvání řezů z brýlí
+
+Před spuštěním přenosu nech zapnuté **Show slice image panels** a
+**Show Qt slice controls in glasses**. Ve Four-up se vedle náhledů objeví
+panel **Slice controls**. Tažením posuvníku Red, Yellow nebo Green změníš
+polohu odpovídajícího řezu. Pole s hodnotou ukazuje milimetry a nabízí také
+krokování šipkami. Změna se přenese do Sliceru a změna ve Sliceru zpět do
+panelu. Ovládání se vztahuje na receivery vybrané v **Stream to**.
+
+Ovladače sledují skutečné řezové pohledy, až osm současně. Více objemů může
+sdílet stejné pohledy; nezávislé roviny vyžadují další pohledy v rozložení
+Sliceru. V panelu se objeví i jejich posuvníky.
+
+Pokud scéna obsahuje sekvenci, pod řezy se zobrazí **Sequence playback**.
+Vyber příslušnou sekvenci a použij původní Qt ovladače Sliceru pro
+přehrávání/pauzu, krokování, první/poslední snímek, rychlost a časový posuvník.
+**Stop** pozastaví přehrávání a vrátí první snímek. Přehrává se stejný
+Sequence Browser jako ve Sliceru, bez kopie dat a dalšího streamu ovladačů.
+Při tažení časového posuvníku se posouvá ukazatel; vybraný snímek se načte
+až po puštění. Tím se během tažení opakovaně nevyměňuje celý objem. Posuvníky
+řezů zachovávají průběžný náhled a společná fronta vynechává zastaralé pohyby.
+
+Dotyk panelu se předává do Qt jako vstup myši. Vzdálené ukazování a svírání
+prstů tato integrace nepřevádí na tažení. Stav **Qt** v pluginu uvádí počet
+přijatých, přijatelných a odfiltrovaných gest pro diagnostiku vstupu.
+
+r8.13 opravuje příjem gest u panelů omezených na vybrané receivery a začátek
+tažení po původním dotyku. Opravuje také zmizení panelu při stisku Stop a
+zachovává panely při dočasném pozastavení přenosu. Pohyb a uvolnění byly
+potvrzeny ve Visualizeru; zbývá ověření ostatních řezů a fyzických brýlí.
+Podrobnosti jsou v [VALIDATION.md](VALIDATION.md).
+
+Při tomto testu ponech automatické pozastavování streamu ve Visualizeru
+vypnuté (`never`). Po automatickém pozastavení skrytého okna se na současném
+QAROS ztratil odběr panelových videí; samotné Resume ho neobnovilo. Obraz se
+vrátil po restartu testovacího Sliceru. Obnova po této automatické pauze se
+ještě vyšetřuje.
+
+Pro přesné přiřazení ovládání rozliš názvy receiverů. Pokud mají více receiverů
+stejný název, lze bezpečně vybrat celou tuto skupinu; při částečném výběru
+plugin u Qt zobrazí upozornění a neodhadne nesprávný headset.
+
+Qt ovladače používají Qt 5.15.2 dodané se Slicerem 5.12.4. Balíček obsahuje
+samostatnou knihovnu `qarvtk-qt-controls.dll` a licenci knihovny qaros-qt.
 
 ## První instalace i aktualizace
 
@@ -91,7 +136,7 @@ Jeho nový Live plugin se připravuje v [PR #4](https://github.com/HonzaHovora/Q
 
 ## Když se něco nepovede
 
-Aktuální modul ukazuje **Live plugin r8.8**; najetím na tento řádek zjistíš
+Aktuální modul ukazuje **Live plugin r8.15**; najetím na tento řádek zjistíš
 cestu skutečně načteného souboru. Po Pull vždy spusť `UPDATE-LIVE-PLUGIN.cmd`
 se zavřeným Slicerem. Nastavení 14″ je od r8.3 předané explicitně i již
 existujícímu panelu. U náhledů se skrývají rohové anotace řezů i ve Sliceru;
@@ -101,8 +146,10 @@ po Stop se obnoví. Podrobnosti jsou v [popisu aktualizace](QAROS_DEV3184_UPDATE
 | --- | --- |
 | Modul není v nabídce | Celá složka pluginu v Additional module paths, restart Sliceru. |
 | Vidíš i starý QAROS Streaming | Odeber cestu k jiné staré kopii pluginu, nepřidávej zálohu. |
-| SDK / DLL mismatch | Kompletní QAROS dev.3184 a DLL z téhož Live balíčku; nemíchej SDK soubory. |
+| SDK / DLL mismatch | Kompletní QAROS 0.10.0-rc.4.16 a DLL z téhož Live balíčku. |
 | Start bez obrazu | Receiver nebo připojený headset, správný Stream to, schválení v Hubu. |
+| Objem funguje, panely po restartu zůstaly černé | Nainstaluj r8.12 nebo novější: při opětovném použití panelu explicitně připojí aktuální video stream. Ve Visualizeru byla oprava ověřena i po přerušené relaci. |
+| Dotykový kroužek se zobrazuje, slider nereaguje | Zkontroluj `input received` ve stavu Qt. Nula znamená, že SDK pluginu nepředalo žádné gesto; samotný kroužek nepotvrzuje doručení vstupu do Qt. |
 | Po Stop/Start není obraz | Ulož logy aktuálního pokusu. Dřívější workaround byl vytvořit nový receiver a stream restartovat; oprava v dev.3184 zatím není ověřena. |
 | Nepodporovaný mapper nebo režim objemu | Pro Live CT/MR použij podporovaný VTK GPU Composite; ověř nejdřív jednoduchou scénu. |
 
